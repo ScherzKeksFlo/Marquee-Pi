@@ -6,6 +6,12 @@ Das Windows-Tool verwaltet eine Bibliothek eigener Standardmedien. Es kann Datei
 
 Der Pi hält das zuletzt aktivierte Standardmedium lokal vor. Damit erscheint es bereits beim Pi-Start, bevor Windows erreichbar ist. Ein neues Medium wird zunächst vollständig übertragen und geprüft; erst danach ersetzt es das aktive Medium. Bei fehlgeschlagenem Upload bleibt das bisherige Standardmedium erhalten.
 
+## Start ohne Windows
+
+Die ausgewählte Datei und die Information, welche Datei aktiv ist, liegen dauerhaft auf dem Pi. Das Anzeigeprogramm startet beim Booten automatisch und lädt dieses Medium aus lokalem Speicher; es wartet dafür weder auf Netzwerk noch auf LaunchBox. Ein MP4 oder eine Animation beginnt in Endlosschleife, sobald die grafische Ausgabe bereit ist. Wenn die aktive Datei beschädigt oder nicht lesbar ist, erscheint ein mitgeliefertes lokales Ersatzbild.
+
+Zwischen Einschalten und Start der grafischen Ausgabe kann der Pi nur seine normale Bootanzeige zeigen. Für eine durchgehende Optik kann später zusätzlich ein statisches frühes Bootbild eingerichtet werden; die Eignung und Aktualisierung dieses Bootbilds müssen mit der tatsächlich installierten Pi-OS-Version geprüft werden. Video und Animation laufen erst nach Start des Anzeigeprogramms.
+
 ## Formate der ersten Version
 
 | Endung | Verwendung | Hinweise |

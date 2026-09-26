@@ -2,7 +2,7 @@
 
 ## Zuständigkeiten
 
-1. Das Pi-Programm startet automatisch und zeigt ohne Windows-Verbindung ein lokales Standardmedium.
+1. Das Pi-Programm startet beim Booten automatisch, lädt das dauerhaft auf dem Pi gespeicherte Standardmedium ohne Netzwerkverbindung und zeigt bei einem Dateifehler ein lokales Ersatzbild.
 2. Ein Windows-Programm stellt Verbindung, Status und das Menü im Infobereich bereit. Es sendet Bilddaten bzw. Befehle an den Pi.
 3. Ein LaunchBox/Big-Box-Plugin meldet Spielstart und Spielende an das Windows-Programm. Die Plugin-Schnittstelle stellt Bildtypen wie `Arcade - Marquee` und `Arcade - Controls Information` bereit.
 4. Die Windows-Abschaltsteuerung unterscheidet vollständiges Ausschalten von Neustart. Diese Unterscheidung darf nicht allein vom Netzwerkverlust abgeleitet werden.
@@ -49,6 +49,7 @@ Ein Pi-Overlay-Dateisystem kann die SD-Karte zusätzlich gegen versehentliches f
 ## Vor Ort zu prüfen
 
 - Pi-OS-Version und 32-/64-Bit-Architektur
+- Boottest mit ausgeschaltetem Windows: gespeichertes Standardmedium erscheint ohne Netzwerk; Video oder Animation startet nach Bereitstellung der grafischen Ausgabe
 - Tatsächliche Displayausrichtung und Touch-Koordinaten
 - Statische IP-Adressen oder feste Namen der direkten Verbindung
 - LaunchBox-Installationspfad, Version und vorhandene Bildtypen je Beispielspiel
