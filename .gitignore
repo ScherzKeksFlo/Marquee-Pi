@@ -1,0 +1,26 @@
+# Windows/.NET
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Release outputs and local runtime data
+dist/
+build/
+logs/
+media/
+*.local.json
+.env
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
