@@ -9,7 +9,7 @@
 
 ## Anzeigezustände
 
-| Zustand | Pi-Anzeige | Berührung |
+| Zustand | Pi-Anzeige | Kurzes Tippen |
 | --- | --- | --- |
 | Start / kein Spiel | Lokales Standardlogo oder Animation | Keine Änderung |
 | Spiel aktiv, Marquee vorhanden | Marquee | Zur Control-Panel-Ansicht wechseln, wenn vorhanden |
@@ -19,6 +19,12 @@
 | Windows-Verbindung unterbrochen | Nach Ablauf eines Timeouts Standardmedium | Keine Änderung |
 
 Die Grafik wird proportional in 800 × 480 eingepasst. Abschneiden ist standardmäßig deaktiviert. Neue Spielereignisse verwerfen ältere Anzeigezustände. Nach einem erneuten Verbindungsaufbau synchronisiert Windows den aktuellen Zustand.
+
+## Touch-Gesten
+
+Das Pi-Programm erkennt ein kurzes Tippen und vier voneinander getrennte Wischgesten: oben nach unten, unten nach oben, links nach rechts und rechts nach links. Für jede erkannte Geste wird ein Ereignis mit Richtung und aktuellem Anzeigezustand erzeugt. Die Wischgesten haben vorerst keine zugewiesene Aktion. Die Zuordnung wird später konfigurierbar gemacht; ein nicht zugeordnetes Ereignis ändert die Anzeige nicht.
+
+Die Erkennung nutzt Beginn, Bewegung und Ende einer einzelnen Berührung. Mindeststrecke, maximale Dauer und zulässige Querbewegung sollen konfigurierbar sein. Eine Wischbewegung darf kein Tippen auslösen; ein kurzer Tipp darf keine Wischbewegung auslösen. Mehrere gleichzeitige Berührungen werden zunächst ignoriert. Details und Abnahmekriterien stehen in [touch.md](touch.md).
 
 ## Pi-Steuerbefehle
 

@@ -8,7 +8,7 @@ Ein geplanter Begleitbildschirm für LaunchBox/Big Box auf Windows 11 und einen 
 
 - Nach dem Einschalten zeigt der Pi ein lokal gespeichertes Standardlogo oder eine Animation.
 - Beim Spielstart sendet das Windows-Programm die Spielkennung und passende Grafiken an den Pi. Das Display zeigt ein Marquee, alternativ Banner oder Logo.
-- Eine Berührung schaltet während des Spiels zwischen Marquee und Control-Panel-Ansicht um. Beim Spielende erscheint wieder das Standardlogo.
+- Ein kurzes Tippen schaltet während des Spiels zwischen Marquee und Control-Panel-Ansicht um. Vier Wischrichtungen (oben nach unten, unten nach oben, links nach rechts, rechts nach links) werden als eigene Gesten erkannt; ihre Aktionen legen wir später fest. Beim Spielende erscheint wieder das Standardlogo.
 - Bei einem Windows-Neustart bleibt der Pi eingeschaltet; ein Verbindungsabbruch setzt nur die Anzeige zurück.
 - Ein Windows-Symbol im Infobereich zeigt den Verbindungsstatus und bietet Anzeige neu laden, Pi neu starten, Pi herunterfahren und Standardlogo anzeigen.
 - Beim vollständigen Herunterfahren über Windows oder Big Box soll der Pi einen Shutdown-Befehl erhalten. Danach kann die Funksteckdose manuell ausgeschaltet werden.
