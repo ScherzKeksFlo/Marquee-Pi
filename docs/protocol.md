@@ -9,11 +9,12 @@ Das Windows-Programm kommuniziert über die direkte Netzwerkverbindung mit dem P
 | `GET /v1/status` | Version, Zustand, Spielkennung und Bereitschaft lesen |
 | `POST /v1/game` | Spielkennung und verfügbare Bildtypen setzen |
 | `POST /v1/default` | Auf Standardanzeige zurücksetzen |
+| `POST /v1/default-media` | Neues Standardmedium übertragen, prüfen und erst danach aktivieren |
 | `POST /v1/reload` | Anzeige und Konfiguration neu laden |
 | `POST /v1/reboot` | Pi neu starten |
 | `POST /v1/shutdown` | Pi herunterfahren |
 
-Spielgrafiken müssen vom Windows-Rechner zum Pi übertragen werden; Windows-Dateipfade allein sind auf dem Pi nicht lesbar. Das endgültige Medienformat, Größenlimit, Caching und Fehlerformat werden zusammen mit der Implementierung festgelegt. Befehle zum Neustart oder Herunterfahren müssen eine eindeutige Bestätigung liefern, bevor die Verbindung endet.
+Spielgrafiken müssen vom Windows-Rechner zum Pi übertragen werden; Windows-Dateipfade allein sind auf dem Pi nicht lesbar. Das Standardmedium wird separat übertragen und auf dem Pi dauerhaft gespeichert. Uploads müssen vor der Aktivierung vollständig validiert werden; ein fehlgeschlagener Upload lässt das bisherige Standardmedium aktiv. Das endgültige Medienformat, Größenlimit, Caching und Fehlerformat werden zusammen mit der Implementierung festgelegt. Befehle zum Neustart oder Herunterfahren müssen eine eindeutige Bestätigung liefern, bevor die Verbindung endet.
 
 ## Wiederverbindung
 

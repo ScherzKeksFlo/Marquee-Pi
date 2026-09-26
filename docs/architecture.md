@@ -26,6 +26,10 @@ Das Pi-Programm erkennt ein kurzes Tippen und vier voneinander getrennte Wischge
 
 Die Erkennung nutzt Beginn, Bewegung und Ende einer einzelnen Berührung. Mindeststrecke, maximale Dauer und zulässige Querbewegung sollen konfigurierbar sein. Eine Wischbewegung darf kein Tippen auslösen; ein kurzer Tipp darf keine Wischbewegung auslösen. Mehrere gleichzeitige Berührungen werden zunächst ignoriert. Details und Abnahmekriterien stehen in [touch.md](touch.md).
 
+## Standardmedium
+
+Das Windows-Tool verwaltet eigene Standardbilder und Animationen, zeigt eine Vorschau und überträgt das ausgewählte Medium zum Pi. Der Pi speichert das aktive Medium dauerhaft lokal, damit es schon vor dem Windows-Start sichtbar ist. Ein fehlgeschlagener Upload darf das bisherige Medium nicht ersetzen. Formate, Grenzen und der persistente Speicherort bei aktiviertem Overlay stehen in [media.md](media.md).
+
 ## Pi-Steuerbefehle
 
 - `reload`: Anzeige und Konfiguration neu laden, ohne Betriebssystem-Neustart.
