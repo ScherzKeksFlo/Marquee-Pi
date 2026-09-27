@@ -1,3 +1,5 @@
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include "core.hpp"
 #include <winhttp.h>
 #include <shlobj.h>
@@ -271,6 +273,11 @@ Settings loadSettings() {
             else if (key == "token") s.token = fromUtf8(value);
         } else if (section == "gestures") {
             if (key == "retroarchmenuhotkey") s.hotkey = fromUtf8(value);
+            else if (key == "retroarchmenumode") s.retroArchNetworkControl = lower(value) == "network";
+            else if (key == "retroarchnetworkport") {
+                try { int port = std::stoi(value); if (port > 0 && port <= 65535) s.retroArchNetworkPort = port; }
+                catch (...) {}
+            }
             else {
                 static const std::map<std::string, std::string> names = {
                     {"swipedown", "swipe-down"}, {"swipeup", "swipe-up"},
@@ -296,6 +303,8 @@ void saveSettings(const Settings& s) {
                        "\r\nSwipeRight=" + gesture("swipe-right") +
                        "\r\nSwipeLeft=" + gesture("swipe-left") +
                        "\r\nRetroArchMenuHotkey=" + line(s.hotkey) +
+                       "\r\nRetroArchMenuMode=" + std::string(s.retroArchNetworkControl ? "network" : "keyboard") +
+                       "\r\nRetroArchNetworkPort=" + std::to_string(s.retroArchNetworkPort) +
                        "\r\n\r\n[General]\r\nStartWithWindows=" +
                        std::string(s.autostart ? "true" : "false") + "\r\n";
     std::wstring temp = settingsPath() + L".tmp";
@@ -304,32 +313,72 @@ void saveSettings(const Settings& s) {
         throw std::runtime_error("INI replacement failed");
 }
 bool validHotkey(const std::wstring& text) { return !hotkeyKeys(text).empty(); }
+static void traceHotkey(const std::string& message) {
+    try { writeFile(dataDirectory() + L"\\hotkey-diagnostic.txt", message + "\n"); } catch (...) {}
+}
 bool sendRetroArchHotkey(const std::wstring& text) {
     auto keys = hotkeyKeys(text);
-    if (keys.empty()) return false;
+    if (keys.empty()) { traceHotkey("invalid-hotkey"); return false; }
     HWND window = GetForegroundWindow();
-    if (!window) return false;
+    if (!window) { traceHotkey("no-foreground-window"); return false; }
     DWORD pid = 0;
     GetWindowThreadProcessId(window, &pid);
-    if (!pid) return false;
+    if (!pid) { traceHotkey("no-foreground-pid"); return false; }
     HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!process) return false;
+    if (!process) { traceHotkey("open-process-error=" + std::to_string(GetLastError())); return false; }
     std::wstring path(32768, L'\0');
     DWORD n = DWORD(path.size());
     BOOL ok = QueryFullProcessImageNameW(process, 0, path.data(), &n);
+    DWORD queryError = ok ? 0 : GetLastError();
     CloseHandle(process);
-    if (!ok || lowerW(filename(path.substr(0, n))) != L"retroarch.exe") return false;
+    if (!ok) { traceHotkey("query-process-error=" + std::to_string(queryError)); return false; }
+    std::wstring name = lowerW(filename(path.substr(0, n)));
+    if (name != L"retroarch.exe") { traceHotkey("foreground=" + toUtf8(name)); return false; }
     std::vector<INPUT> press, release;
     for (BYTE key : keys) { INPUT i{}; i.type = INPUT_KEYBOARD; i.ki.wVk = key; press.push_back(i); }
     for (auto it = keys.rbegin(); it != keys.rend(); ++it) {
         INPUT i{}; i.type = INPUT_KEYBOARD; i.ki.wVk = *it; i.ki.dwFlags = KEYEVENTF_KEYUP; release.push_back(i);
     }
-    const bool pressed = SendInput(UINT(press.size()), press.data(), sizeof(INPUT)) == press.size();
-    if (pressed) Sleep(120); // Keep the keys down long enough for RetroArch to poll them.
-    const bool released = SendInput(UINT(release.size()), release.data(), sizeof(INPUT)) == release.size();
-    return pressed && released;
-}
-HttpResult piRequest(const Settings& s, const std::wstring& method, const std::wstring& path,
+    UINT pressedCount = SendInput(UINT(press.size()), press.data(), sizeof(INPUT));
+    DWORD pressError = pressedCount == press.size() ? 0 : GetLastError();
+    if (pressedCount == press.size()) Sleep(120);
+    UINT releasedCount = SendInput(UINT(release.size()), release.data(), sizeof(INPUT));
+    DWORD releaseError = releasedCount == release.size() ? 0 : GetLastError();
+    traceHotkey("foreground=retroarch.exe press=" + std::to_string(pressedCount) +
+                "/" + std::to_string(press.size()) + " error=" + std::to_string(pressError) +
+                " release=" + std::to_string(releasedCount) + "/" +
+                std::to_string(release.size()) + " error=" + std::to_string(releaseError));
+    return pressedCount == press.size() && releasedCount == release.size();
+}bool sendRetroArchNetworkCommand(int port) {
+    if (port < 1 || port > 65535) { traceHotkey("network-invalid-port"); return false; }
+    WSADATA data{};
+    if (WSAStartup(MAKEWORD(2, 2), &data) != 0) { traceHotkey("network-startup-failed"); return false; }
+    SOCKET socketHandle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (socketHandle == INVALID_SOCKET) {
+        traceHotkey("network-socket-failed"); WSACleanup(); return false;
+    }
+    DWORD timeout = 500;
+    setsockopt(socketHandle, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(static_cast<u_short>(port));
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    constexpr char probe[] = "VERSION";
+    bool ready = sendto(socketHandle, probe, sizeof(probe) - 1, 0,
+                        reinterpret_cast<const sockaddr*>(&address), sizeof(address)) == sizeof(probe) - 1;
+    char reply[256]{};
+    if (ready) ready = recvfrom(socketHandle, reply, sizeof(reply), 0, nullptr, nullptr) > 0;
+    bool sent = false;
+    if (ready) {
+        constexpr char command[] = "MENU_TOGGLE";
+        sent = sendto(socketHandle, command, sizeof(command) - 1, 0,
+                      reinterpret_cast<const sockaddr*>(&address), sizeof(address)) == sizeof(command) - 1;
+    }
+    closesocket(socketHandle);
+    WSACleanup();
+    traceHotkey(sent ? "network-menu-command-sent" : ready ? "network-send-failed" : "network-probe-timeout");
+    return sent;
+}HttpResult piRequest(const Settings& s, const std::wstring& method, const std::wstring& path,
                      const std::string& body, const std::wstring& contentType,
                      const std::wstring& extraHeader, int timeoutMs) {
     if (!s.configured()) throw std::runtime_error("Pi-Adresse und Token zuerst einrichten");

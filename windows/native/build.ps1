@@ -15,12 +15,12 @@ $exe = Join-Path $output "Marquee-Pi.exe"
 & $compiler -std=c++20 -O2 -Wall -Wextra -municode -mwindows -static -static-libgcc -static-libstdc++ `
     (Join-Path $PSScriptRoot "core.cpp") (Join-Path $PSScriptRoot "main.cpp") $object `
     -o $exe -lwinhttp -lshell32 -ladvapi32 -lcrypt32 -lcomctl32 -lcomdlg32 `
-    -lwevtapi -lgdi32 -luser32 -lole32 -luuid
+    -lwevtapi -lgdi32 -luser32 -lole32 -luuid -lws2_32
 if ($LASTEXITCODE -ne 0) { throw "Marquee-Pi C++ build failed" }
 $tests = Join-Path $output "Marquee-Pi-tests.exe"
 & $compiler -std=c++20 -O2 -Wall -Wextra -static -static-libgcc -static-libstdc++ `
     (Join-Path $PSScriptRoot "core.cpp") (Join-Path $PSScriptRoot "tests.cpp") `
-    -o $tests -lwinhttp -lshell32 -ladvapi32 -lcrypt32 -luser32 -lole32 -luuid
+    -o $tests -lwinhttp -lshell32 -ladvapi32 -lcrypt32 -luser32 -lole32 -luuid -lws2_32
 if ($LASTEXITCODE -ne 0) { throw "Marquee-Pi test build failed" }
 $testDirectory = Join-Path $output "test-run"
 New-Item -ItemType Directory -Force -Path $testDirectory | Out-Null

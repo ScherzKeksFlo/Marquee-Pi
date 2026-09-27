@@ -27,7 +27,7 @@ enum MenuId {
     M_SETTINGS, M_OPEN_INI, M_LOAD_INI, M_EXIT
 };
 enum SettingId {
-    S_URL = 2001, S_TOKEN, S_SHOW_TOKEN, S_HELP, S_HOTKEY,
+    S_URL = 2001, S_TOKEN, S_SHOW_TOKEN, S_HELP, S_HOTKEY, S_RETRO_MODE, S_RETRO_PORT,
     S_STARTUP, S_MEDIA, S_OPEN_INI, S_SAVE, S_CANCEL,
     S_GESTURE0 = 2020
 };
@@ -322,6 +322,7 @@ void App::onGame(GameMessage message) {
 void App::pollLoop() {
     std::string instance;
     int64_t cursor = 0;
+    bool cursorReady = false;
     int cycle = 0, heartbeat = 0;
     bool online = false;
     while (!stopping) {
@@ -380,18 +381,20 @@ void App::pollLoop() {
                 auto events = mini::parse(response.body);
                 std::string nextInstance = events.get("instance_id").value();
                 if (nextInstance != instance) {
-                    instance = nextInstance; cursor = 0;
+                    instance = nextInstance; cursor = 0; cursorReady = false;
                     std::lock_guard<std::mutex> guard(mutex);
                     gestureDirty = true;
                     if (game) needsSync = true;
                 } else {
+                    const auto& received = events.get("events").items;
                     for (const auto& event : events.get("events").items) {
                         int64_t id = event.get("id").integer();
                         if (id <= cursor) continue;
                         cursor = id;
-                        if (current && event.get("action").value() == "retroarch_menu")
+                        if (cursorReady && current && event.get("action").value() == "retroarch_menu")
                             PostMessageW(hwnd, WM_APP_HOTKEY, 0, 0);
                     }
+                    if (!cursorReady && received.size() < 20) cursorReady = true;
                 }
             } catch (...) {}
         }
@@ -446,7 +449,7 @@ void App::onShutdown() {
 
 struct SettingsWindow {
     App* app = nullptr;
-    HWND hwnd = nullptr, url = nullptr, token = nullptr, hotkey = nullptr, autostart = nullptr;
+    HWND hwnd = nullptr, url = nullptr, token = nullptr, hotkey = nullptr, retroMode = nullptr, retroPort = nullptr, autostart = nullptr;
     HWND showToken = nullptr, gestures[4]{};
     explicit SettingsWindow(App* owner) : app(owner) {}
     void create() {
@@ -484,18 +487,29 @@ struct SettingsWindow {
                          190, 329, 160, 25, S_HOTKEY);
         control(hwnd, L"STATIC", L"Beispiele: F1, Ctrl+F1, Shift+F1 (nur im aktiven RetroArch-Fenster).",
                 0, 190, 358, 480, 32);
-        control(hwnd, L"STATIC", L"Allgemein", WS_GROUP, 20, 393, 220, 22);
+        control(hwnd, L"STATIC", L"RetroArch-Steuerung", 0, 20, 393, 170, 22);
+        retroMode = control(hwnd, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL,
+                            190, 390, 360, 120, S_RETRO_MODE);
+        SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)L"Tastaturkürzel senden");
+        SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)L"Lokaler RetroArch-Netzwerkbefehl");
+        SendMessageW(retroMode, CB_SETCURSEL, current.retroArchNetworkControl ? 1 : 0, 0);
+        control(hwnd, L"STATIC", L"Netzwerk-Port", 0, 20, 428, 170, 22);
+        retroPort = control(hwnd, L"EDIT", std::to_wstring(current.retroArchNetworkPort).c_str(),
+                            WS_BORDER | ES_AUTOHSCROLL | ES_NUMBER, 190, 425, 100, 25, S_RETRO_PORT);
+        control(hwnd, L"STATIC", L"Für Netzwerkmodus: RetroArch > Einstellungen > Netzwerk > Netzwerkbefehle aktivieren.",
+                0, 190, 456, 505, 25);
+        control(hwnd, L"STATIC", L"Allgemein", WS_GROUP, 20, 490, 220, 22);
         autostart = control(hwnd, L"BUTTON", L"Mit Windows starten", BS_AUTOCHECKBOX,
-                            20, 422, 180, 26, S_STARTUP);
+                             20, 518, 180, 26, S_STARTUP);
         SendMessageW(autostart, BM_SETCHECK, current.autostart ? BST_CHECKED : BST_UNCHECKED, 0);
         control(hwnd, L"BUTTON", L"Standardmedien verwalten...", BS_PUSHBUTTON,
-                220, 420, 210, 28, S_MEDIA);
+                220, 516, 210, 28, S_MEDIA);
         control(hwnd, L"BUTTON", L"INI-Datei öffnen", BS_PUSHBUTTON,
-                445, 420, 150, 28, S_OPEN_INI);
+                445, 516, 150, 28, S_OPEN_INI);
         control(hwnd, L"BUTTON", L"Speichern", BS_DEFPUSHBUTTON,
-                475, 465, 100, 30, S_SAVE);
+                475, 560, 100, 30, S_SAVE);
         control(hwnd, L"BUTTON", L"Abbrechen", BS_PUSHBUTTON,
-                585, 465, 100, 30, S_CANCEL);
+                585, 560, 100, 30, S_CANCEL);
     }
     void save() {
         Settings next;
@@ -503,6 +517,12 @@ struct SettingsWindow {
         next.piUrl = readText(url);
         next.token = readText(token);
         next.hotkey = readText(hotkey);
+        next.retroArchNetworkControl = SendMessageW(retroMode, CB_GETCURSEL, 0, 0) == 1;
+        try { next.retroArchNetworkPort = std::stoi(readText(retroPort)); }
+        catch (...) { alert(hwnd, L"Ungültiger RetroArch-Netzwerk-Port."); return; }
+        if (next.retroArchNetworkPort < 1 || next.retroArchNetworkPort > 65535) {
+            alert(hwnd, L"RetroArch-Netzwerk-Port muss zwischen 1 und 65535 liegen."); return;
+        }
         next.autostart = SendMessageW(autostart, BM_GETCHECK, 0, 0) == BST_CHECKED;
         for (int i = 0; i < 4; ++i) {
             int selected = int(SendMessageW(gestures[i], CB_GETCURSEL, 0, 0));
@@ -535,7 +555,7 @@ void App::showSettings() {
     auto* state = new SettingsWindow(this);
     HWND window = CreateWindowExW(WS_EX_DLGMODALFRAME, L"MarqueePiSettings",
                                  L"Marquee-Pi - Einstellungen", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-                                 CW_USEDEFAULT, CW_USEDEFAULT, 725, 550, hwnd, nullptr,
+                                 CW_USEDEFAULT, CW_USEDEFAULT, 725, 650, hwnd, nullptr,
                                  GetModuleHandleW(nullptr), state);
     if (!window) { delete state; alert(hwnd, L"Einstellungsfenster konnte nicht geöffnet werden."); return; }
     settingsWindow = window;
@@ -767,7 +787,11 @@ static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) 
         Settings settings;
         bool inGame;
         { std::lock_guard<std::mutex> guard(app->mutex); settings = app->settings; inGame = app->game.has_value(); }
-        if (inGame) sendRetroArchHotkey(settings.hotkey);
+        try { writeFile(dataDirectory() + L"\\gesture-diagnostic.txt", inGame ? "received-in-game\n" : "received-without-game\n"); } catch (...) {}
+        if (inGame) {
+            if (settings.retroArchNetworkControl) sendRetroArchNetworkCommand(settings.retroArchNetworkPort);
+            else sendRetroArchHotkey(settings.hotkey);
+        }
         return 0;
     }
     case WM_ERROR: {

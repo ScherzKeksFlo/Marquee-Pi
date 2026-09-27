@@ -9,6 +9,8 @@ struct Settings {
     std::wstring piUrl;
     std::wstring token;
     std::wstring hotkey = L"F1";
+    bool retroArchNetworkControl = false;
+    int retroArchNetworkPort = 55355;
     bool autostart = false;
     std::map<std::string, std::string> gestures;
     bool configured() const;
@@ -42,6 +44,7 @@ bool autostartEnabled();
 void setAutostart(bool enabled);
 bool validHotkey(const std::wstring& text);
 bool sendRetroArchHotkey(const std::wstring& text);
+bool sendRetroArchNetworkCommand(int port);
 HttpResult piRequest(const Settings& settings, const std::wstring& method,
                      const std::wstring& path, const std::string& body = {},
                      const std::wstring& contentType = L"",

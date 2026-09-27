@@ -20,12 +20,16 @@ int main() {
     settings.piUrl = L"http://10.0.0.10:8765";
     settings.token = L"abcdefghijklmnopqrstuvwxyz0123456789";
     settings.hotkey = L"Ctrl+F1";
+    settings.retroArchNetworkControl = true;
+    settings.retroArchNetworkPort = 55355;
     settings.gestures["swipe-left"] = "box_art";
     settings.autostart = false;
     saveSettings(settings);
     Settings loaded = loadSettings();
     assert(loaded.configured());
     assert(loaded.hotkey == L"Ctrl+F1");
+    assert(loaded.retroArchNetworkControl);
+    assert(loaded.retroArchNetworkPort == 55355);
     assert(loaded.gestures.at("swipe-left") == "box_art");
     assert(!loaded.autostart);
     std::cout << "native tests passed\n";
