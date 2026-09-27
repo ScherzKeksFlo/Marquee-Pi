@@ -33,6 +33,14 @@ internal sealed class PiClient : IDisposable
         }
     }
 
+    public void CommandSync(string command, TimeSpan timeout)
+    {
+        using var cancellation = new CancellationTokenSource(timeout);
+        using var request = Request(HttpMethod.Post, "v1/" + command);
+        using var response = http.Send(request, cancellation.Token);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<string> StatusAsync() =>
         await SendAsync(Request(HttpMethod.Get, "v1/status"));
 

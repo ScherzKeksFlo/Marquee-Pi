@@ -29,7 +29,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly AppSettings settings;
     private readonly PiClient client;
     private readonly NotifyIcon icon;
-    private readonly Form dispatcher = new() { ShowInTaskbar = false };
+    private readonly ShutdownWindow dispatcher;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 5000 };
     private readonly CancellationTokenSource stop = new();
     private readonly SemaphoreSlim gameGate = new(1, 1);
@@ -43,6 +43,7 @@ internal sealed class TrayContext : ApplicationContext
     {
         this.settings = settings;
         this.client = client;
+        dispatcher = new ShutdownWindow(new ShutdownCoordinator(client));
         _ = dispatcher.Handle;
 
         var menu = new ContextMenuStrip();

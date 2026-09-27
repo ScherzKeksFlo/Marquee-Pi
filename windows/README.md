@@ -19,5 +19,5 @@ Nach dem Start im Infobereich `Verbindung einrichten…` wählen und die Pi-Adre
 
 - Windows-App und Pi-API sind lokal gebaut bzw. getestet.
 - Das LaunchBox-Plugin wird gegen die DLL aus der eigenen LaunchBox-Installation gebaut; sie wird nicht mitgeliefert. Auf dem Arcade-PC liegt ein selbstständiges .NET-7-Testpaket (vor dem .NET-10-Upgrade installiert) unter `C:\ArcadePiDisplay` und ein Autostart-Link für den Benutzer `flo`.
-- Die automatische Pi-Abschaltung beim vollständigen Windows-Shutdown ist noch nicht am Zielrechner eingerichtet und geprüft.
-- `ArcadePiTray.exe --pi-shutdown` ist als Aufruf für eine spätere Windows-Abschaltintegration vorbereitet. Ein Windows-Neustart darf diesen Aufruf nicht auslösen.
+- Die automatische Pi-Abschaltung ist implementiert, aber noch nicht am Zielrechner geprüft. Beim bestätigten Windows-Sitzungsende liest die App das aktuelle User32-Ereignis 1074 und sendet den Pi-Shutdown nur bei eindeutigem Ausschalt-Typ. Diagnosemeldungen stehen unter `%LOCALAPPDATA%\ArcadePiDisplay\shutdown.log`.
+- `ArcadePiTray.exe --pi-shutdown` bleibt als manueller Kommandoaufruf verfügbar. Ein Windows-Neustart löst über die automatische Erkennung keinen Pi-Shutdown aus.

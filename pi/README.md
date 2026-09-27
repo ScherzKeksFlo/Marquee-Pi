@@ -38,4 +38,4 @@ Die Windows-PowerShell-Entsprechung für den ersten Befehl ist `$env:PYTHONPATH=
 
 ## Gerätetest
 
-Am Raspberry Pi 3 B+ mit Raspbian Buster, Python 3.7, Chromium 92 und 800 × 480 Touchdisplay geprüft: API-Tests bestanden, H.264-MP4 als lokales Standardmedium gespeichert, Spielgrafik im Kiosk angezeigt und nach einem Pi-Neustart das Standardvideo automatisch wiedergegeben. Touch-Eingaben am realen Display und die Windows-Anbindung stehen noch aus.
+Am Raspberry Pi 3 B+ mit Raspbian Buster, Python 3.7, Chromium 92 und 800 × 480 Touchdisplay geprüft: API-Tests bestanden, H.264-MP4 als lokales Standardmedium gespeichert, Spielgrafik im Kiosk angezeigt und nach einem Pi-Neustart das Standardvideo automatisch wiedergegeben. Die Windows-Anbindung wurde mit einem realen Big-Box-Spielstart geprüft; das passende Marquee erschien und beim Spielende kehrte die Standardanimation zurück. Touch-Eingaben am realen Display stehen noch aus.
