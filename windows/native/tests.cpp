@@ -14,6 +14,9 @@ int main() {
     assert(validHotkey(L"Ctrl+Shift+F1"));
     assert(!validHotkey(L"Ctrl+Ctrl+F1"));
     assert(!validHotkey(L"garbage"));
+    assert(isUser32ShutdownEvent(L"<Event><System><Provider Name='User32' Guid='{x}'/></System><EventData><Data Name='param5'>Herunterfahren</Data></EventData></Event>"));
+    assert(isUser32ShutdownEvent(L"<Provider Name=\"User32\"/>"));
+    assert(!isUser32ShutdownEvent(L"<Provider Name='Kernel-Power'/>"));
     assert(std::filesystem::exists(std::filesystem::path(dataDirectory()).parent_path() / L"portable.flag"));
     Settings settings = loadSettings();
     assert(!settings.configured());

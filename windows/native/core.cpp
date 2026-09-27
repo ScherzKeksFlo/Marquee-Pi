@@ -313,6 +313,12 @@ void saveSettings(const Settings& s) {
         throw std::runtime_error("INI replacement failed");
 }
 bool validHotkey(const std::wstring& text) { return !hotkeyKeys(text).empty(); }
+bool isUser32ShutdownEvent(const std::wstring& xml) {
+    return xml.find(L"<Provider Name='User32'") != std::wstring::npos ||
+           xml.find(L"<Provider Name=\"User32\"") != std::wstring::npos ||
+           xml.find(L"<Provider Name='Microsoft-Windows-User32'") != std::wstring::npos ||
+           xml.find(L"<Provider Name=\"Microsoft-Windows-User32\"") != std::wstring::npos;
+}
 static void traceHotkey(const std::string& message) {
     try { writeFile(dataDirectory() + L"\\hotkey-diagnostic.txt", message + "\n"); } catch (...) {}
 }

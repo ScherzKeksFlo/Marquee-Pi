@@ -28,4 +28,4 @@ Für die Aktion **RetroArch-Menü öffnen** kann Marquee-Pi entweder das eingest
 
 ## Prüfung
 
-Die native EXE wurde mit GCC 13.1 gebaut. JSON-/INI-/Hotkey-Tests, Fenster-Smoke-Test und eine reale Spielstart-/Spielende-Nachricht über die Named Pipe zur Pi-API waren erfolgreich. Der lokale RetroArch-Netzwerkbefehl wurde am Arcade-PC mit einer Wischgeste während eines laufenden Spiels erfolgreich getestet. Die Windows-Abschalterkennung ist implementiert; der echte Shutdown des Arcade-PCs ist noch nicht getestet.
+Die native EXE wurde mit GCC 13.1 gebaut. JSON-/INI-/Hotkey-Tests, Fenster-Smoke-Test und eine reale Spielstart-/Spielende-Nachricht über die Named Pipe zur Pi-API waren erfolgreich. Der lokale RetroArch-Netzwerkbefehl wurde am Arcade-PC mit einer Wischgeste während eines laufenden Spiels erfolgreich getestet. Der vollständige Shutdown über Big Box wurde am Arcade-PC getestet: Der Pi fuhr herunter und seine API war danach nicht mehr erreichbar. Das normale Windows-Ausschaltmenü wurde nach dem Parser-Fix noch nicht erneut geprüft.

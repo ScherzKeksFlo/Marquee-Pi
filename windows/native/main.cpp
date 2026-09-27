@@ -107,8 +107,7 @@ static std::wstring recentShutdownType(FILETIME startedUtc) {
         if (EvtRender(nullptr, event, EvtRenderEventXml, DWORD(buffer.size() * sizeof(wchar_t)),
                       buffer.data(), &needed, &count)) {
             std::wstring xml(buffer.data());
-            if (xml.find(L"Microsoft-Windows-User32") != std::wstring::npos ||
-                xml.find(L"Name=\"User32\"") != std::wstring::npos) {
+            if (isUser32ShutdownEvent(xml)) {
                 size_t t = xml.find(L"SystemTime=");
                 bool recent = false;
                 if (t != std::wstring::npos && t + 22 < xml.size()) {
