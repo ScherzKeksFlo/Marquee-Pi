@@ -1,5 +1,7 @@
 # Pi-Anzeigeprogramm
 
+Die vollständige Anleitung für eine frische Raspberry Pi OS Lite-Installation steht in [INSTALL.md](INSTALL.md). Die Trixie-Schritte müssen noch am Zielgerät geprüft werden.
+
 Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte API. Die Anzeige lädt ein auf dem Pi gespeichertes Standardbild oder Video, zeigt Spielgrafiken und verarbeitet Tippen sowie vier Wischrichtungen. Für Wischgesten sind noch keine Aktionen zugewiesen.
 
 ## Voraussetzungen
@@ -23,7 +25,7 @@ Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte 
 
 Die API-Befehle sind standardmäßig deaktiviert und antworten mit HTTP 503. Auf dem getesteten Buster-Pi laufen sie über `systemctl` und eine Polkit-Regel für den eigenen Dienstbenutzer `arcadepi`; `NoNewPrivileges=true` bleibt aktiv. Die Regelvorlage liegt in `arcade-pi-display.pkla.example`.
 
-Für die Dienstvorlage den Systembenutzer `arcadepi` ohne Login-Shell anlegen, `/var/lib/arcade-pi-display` diesem Benutzer zuordnen und `/etc/arcade-pi-display/config.json` als `root:arcadepi` mit Modus `640` speichern. Die Polkit-Vorlage gehört auf Buster nach `/etc/polkit-1/localauthority/50-local.d/arcade-pi-display.pkla`. Danach beide Dienste mit `systemctl enable --now` aktivieren. `power_commands_enabled` erst nach Installation der Regel, Prüfung mit `pkcheck` und einem Neustarttest aktivieren. Der API-Neustart ist am Gerät geprüft, Shutdown noch nicht, weil danach ein manueller Stromzyklus nötig ist.
+Für die Dienstvorlage den Systembenutzer `arcadepi` ohne Login-Shell anlegen, `/var/lib/arcade-pi-display` diesem Benutzer zuordnen und `/etc/arcade-pi-display/config.json` als `root:arcadepi` mit Modus `640` speichern. Die PKLA-Vorlage gehört nur auf Buster nach `/etc/polkit-1/localauthority/50-local.d/arcade-pi-display.pkla`. Auf Trixie gilt die JavaScript-Regel `arcade-pi-display.rules.example` unter `/etc/polkit-1/rules.d/`. Danach beide Dienste mit `systemctl enable --now` aktivieren. `power_commands_enabled` erst nach Installation der Regel, Prüfung mit `pkcheck` und einem Neustarttest aktivieren. Der API-Neustart ist am Gerät geprüft, Shutdown noch nicht, weil danach ein manueller Stromzyklus nötig ist.
 
 ## Tests
 

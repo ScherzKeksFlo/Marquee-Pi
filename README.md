@@ -36,4 +36,4 @@ Die spätere Community-Version soll Konfiguration für andere Pi-Modelle, Displa
 
 ## Entwicklung
 
-Die Schnittstelle und die offenen Hardwareprüfungen stehen in [docs/architecture.md](docs/architecture.md). Formate und Upload-Regeln stehen in [docs/media.md](docs/media.md). Start- und Build-Schritte stehen in den README-Dateien der Komponenten. Der Quellcode steht unter der [MIT-Lizenz](LICENSE).
+Die Schnittstelle und die offenen Hardwareprüfungen stehen in [docs/architecture.md](docs/architecture.md). Formate und Upload-Regeln stehen in [docs/media.md](docs/media.md). Start- und Build-Schritte stehen in den README-Dateien der Komponenten; die Pi-Neuinstallation beschreibt [pi/INSTALL.md](pi/INSTALL.md). Der Quellcode steht unter der [MIT-Lizenz](LICENSE).

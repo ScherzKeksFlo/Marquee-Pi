@@ -1,0 +1,11 @@
+// Install as /etc/polkit-1/rules.d/50-arcade-pi-display.rules on Raspberry Pi OS Trixie.
+// Only the dedicated API service user may request these login1 power actions.
+polkit.addRule(function(action, subject) {
+    if (subject.user !== "arcadepi") return;
+    if (action.id === "org.freedesktop.login1.reboot" ||
+        action.id === "org.freedesktop.login1.reboot-multiple-sessions" ||
+        action.id === "org.freedesktop.login1.power-off" ||
+        action.id === "org.freedesktop.login1.power-off-multiple-sessions") {
+        return polkit.Result.YES;
+    }
+});
