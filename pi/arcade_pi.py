@@ -317,8 +317,16 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(503, {"error": "Power commands are not configured"})
                     return
                 action = "reboot" if path.endswith("reboot") else "poweroff"
+                policy = "org.freedesktop.login1.reboot" if action == "reboot" else "org.freedesktop.login1.power-off"
+                authorization = subprocess.run(
+                    ["pkcheck", "--action-id", policy, "--process", str(os.getpid()),
+                     "--allow-user-interaction=no"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+                if authorization.returncode != 0:
+                    self._json(503, {"error": "Power authorization unavailable"})
+                    return
                 threading.Timer(0.5, lambda: subprocess.run(
-                    ["sudo", "-n", "systemctl", action], check=False
+                    ["systemctl", action], check=False
                 )).start()
             else:
                 self._json(404, {"error": "Not found"})
@@ -326,10 +334,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
         except (ValueError, json.JSONDecodeError) as exc:
             self._json(400, {"error": str(exc)})
+        except subprocess.TimeoutExpired:
+            self._json(503, {"error": "Power authorization timed out"})
         except OSError:
             self._json(500, {"error": "Media storage failed"})
 
     def log_message(self, format: str, *args) -> None:
+        request_line = str(args[0]) if args else ""
+        if request_line.startswith(("GET /ui/state ", "GET /v1/status ", "POST /v1/heartbeat ")):
+            return
         print("%s %s" % (self.address_string(), format % args), flush=True)
 
 

@@ -38,7 +38,7 @@ Das Windows-Tool verwaltet eigene Standardbilder und Animationen, zeigt eine Vor
 - `shutdown`: Pi sauber herunterfahren. Wiederanlauf erfordert einen neuen Stromzyklus der Funksteckdose.
 - `status`: Erreichbarkeit, Programmversion, aktueller Zustand und aktives Spiel abfragen.
 
-Die konkrete Netzwerk-API steht in [protocol.md](protocol.md). Sie bleibt auf die direkte Verbindung beschränkt und benötigt Authentifizierung. Lokale Zugangsdaten werden nicht in Git gespeichert.
+Die konkrete Netzwerk-API steht in [protocol.md](protocol.md). Auf dem getesteten Pi regelt Polkit nur Reboot und Poweroff für den eigenen API-Dienstbenutzer. Sie bleibt auf die direkte Verbindung beschränkt und benötigt Authentifizierung. Lokale Zugangsdaten werden nicht in Git gespeichert.
 
 ## Ausschalten
 

@@ -1,0 +1,6 @@
+[Arcade Pi Display power actions]
+Identity=unix-user:arcadepi
+Action=org.freedesktop.login1.reboot;org.freedesktop.login1.reboot-multiple-sessions;org.freedesktop.login1.power-off;org.freedesktop.login1.power-off-multiple-sessions
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes

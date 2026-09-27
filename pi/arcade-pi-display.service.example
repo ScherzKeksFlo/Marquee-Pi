@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=REPLACE_WITH_PI_USER
+User=arcadepi
 ExecStart=/usr/bin/python3 /opt/arcade-pi-display/arcade_pi.py --config /etc/arcade-pi-display/config.json
 Restart=on-failure
 RestartSec=3
