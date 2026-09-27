@@ -4,7 +4,7 @@ Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte 
 
 ## Voraussetzungen
 
-- Raspberry Pi OS mit X11, `xinit` und Chromium (am Pi 3 B+ mit Buster/Python 3.7 geprüft)
+- Raspberry Pi OS mit X11, `xinit`, `xset` (`x11-xserver-utils`) und Chromium (am Pi 3 B+ mit Buster/Python 3.7 geprüft)
 - Python 3
 - `ffprobe` aus FFmpeg für MP4-Uploads
 - Ein dauerhaft beschreibbarer Datenordner für das Standardmedium
@@ -17,7 +17,7 @@ Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte 
 3. `python3 arcade_pi.py --config config.json` starten.
 4. `http://127.0.0.1:8765/ui/` im Browser öffnen. `start-kiosk.sh` startet Chromium im Vollbild.
 
-`arcade-pi-display.service.example` und `arcade-pi-kiosk.service.example` sind Vorlagen für den Systemstart. Benutzername und Pfade müssen zur Pi-Installation passen. Der Kioskdienst startet Xorg auf `tty7` und Chromium ohne Desktop-Sitzung. Auf dem getesteten Buster-System verhindert `chromium-policy.example.json` als `/etc/chromium-browser/policies/managed/arcade-pi-display.json` die Übersetzungsleiste. Bei einem schreibgeschützten Overlay muss der Datenordner auf einer separat beschreibbaren Partition liegen; sonst gehen Uploads beim nächsten Neustart verloren.
+`arcade-pi-display.service.example` und `arcade-pi-kiosk.service.example` sind Vorlagen für den Systemstart. Benutzername und Pfade müssen zur Pi-Installation passen. Der Kioskdienst startet Xorg auf `tty7` und Chromium ohne Desktop-Sitzung. `start-kiosk.sh` deaktiviert beim X11-Start den Bildschirmschoner und DPMS, damit das Display während des Kioskbetriebs nicht schwarz wird. Auf dem getesteten Buster-System verhindert `chromium-policy.example.json` als `/etc/chromium-browser/policies/managed/arcade-pi-display.json` die Übersetzungsleiste. Bei einem schreibgeschützten Overlay muss der Datenordner auf einer separat beschreibbaren Partition liegen; sonst gehen Uploads beim nächsten Neustart verloren.
 
 ## Neustart und Shutdown
 

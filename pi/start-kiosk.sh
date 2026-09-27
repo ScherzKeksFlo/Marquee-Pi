@@ -11,6 +11,14 @@ else
   exit 1
 fi
 
+if command -v xset >/dev/null 2>&1; then
+  xset s off
+  xset s noblank
+  xset -dpms 2>/dev/null || true
+else
+  echo "xset is required to disable X11 screen blanking." >&2
+fi
+
 exec "$BROWSER" --kiosk --no-first-run --noerrdialogs \
   --disable-session-crashed-bubble --disable-infobars \
   --disable-translate --lang=de-DE \
