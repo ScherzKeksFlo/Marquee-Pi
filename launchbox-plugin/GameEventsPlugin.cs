@@ -30,12 +30,16 @@ namespace ArcadePiLaunchBox
             var controls = FirstExisting(
                 FirstImage(game, ImageTypes.ArcadeControlsInformation),
                 FirstImage(game, ImageTypes.ArcadeControlPanel));
+            var boxArt = FirstExisting(game.FrontImagePath, FirstImage(game, ImageTypes.BoxFront));
+            var logo = FirstExisting(game.ClearLogoImagePath, FirstImage(game, ImageTypes.ClearLogo));
             var message = new GameMessage
             {
                 Action = "game",
                 Title = game.Title ?? "Game",
                 MarqueePath = marquee,
-                ControlsPath = controls
+                ControlsPath = controls,
+                BoxArtPath = boxArt,
+                LogoPath = logo
             };
             Send(message);
         }
@@ -116,6 +120,8 @@ namespace ArcadePiLaunchBox
             [DataMember] public string Title { get; set; } = "";
             [DataMember] public string? MarqueePath { get; set; }
             [DataMember] public string? ControlsPath { get; set; }
+            [DataMember] public string? BoxArtPath { get; set; }
+            [DataMember] public string? LogoPath { get; set; }
         }
     }
 }

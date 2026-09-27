@@ -1,6 +1,6 @@
 # LaunchBox/Big-Box-Plugin
 
-`GameEventsPlugin` implementiert `IGameLaunchingPlugin`. Nach erfolgreichem Spielstart meldet es Titel, Marquee bzw. Banner/Logo und eine vorhandene Arcade-Steuerungsgrafik an die lokal laufende Windows-App. Nach dem von LaunchBox erkannten Spielende meldet es `exit`. Die Bildpfade werden im LaunchBox-Verzeichnis aufgelöst. Ist die App nicht erreichbar, läuft der Spielstart weiter.
+`GameEventsPlugin` implementiert `IGameLaunchingPlugin`. Nach erfolgreichem Spielstart meldet es Titel, Marquee bzw. Banner/Logo und eine vorhandene Arcade-Steuerungsgrafik sowie Box-Front-Art und Clear Logo an die lokal laufende Windows-App. Nach dem von LaunchBox erkannten Spielende meldet es `exit`. Die Bildpfade werden im LaunchBox-Verzeichnis aufgelöst. Ist die App nicht erreichbar, läuft der Spielstart weiter.
 
 ## Build
 

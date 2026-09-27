@@ -13,6 +13,8 @@ Zum Bauen wird das .NET-10-SDK benötigt. Ein selbstständiges Windows-x64-Paket
 
 Nach dem Start im Infobereich `Verbindung einrichten…` wählen und die Pi-Adresse als `http://PI-IP:8765` sowie den Token aus der Pi-Konfiguration eintragen. Die Werte werden pro Windows-Benutzer unter `%LOCALAPPDATA%\ArcadePiDisplay\settings.json` gespeichert. Über `Mit Windows starten` lässt sich der Autostart für das angemeldete Konto einschalten, sobald die veröffentlichte EXE installiert ist. Das ist eine lokale Konfigurationsdatei und gehört nicht ins Git-Repository.
 
+`Wischgesten einrichten…` weist jeder der vier Richtungen eine Aktion zu. Zur Auswahl stehen Marquee, Box Art, LaunchBox-Clear-Logo, Steuerungsbelegung, Standardmedium, RetroArch-Menü und keine Aktion. Die RetroArch-Tastenkombination wird als Tastaturkürzel eingegeben (z. B. `F1` oder `Ctrl+Shift+F1`) und nur an ein aktives RetroArch-Fenster gesendet. Die Einstellungen werden mit der Pi-Anzeige synchronisiert.
+
 `Standardmedien verwalten…` importiert eigene Dateien in eine lokale Bibliothek. `Auf Pi aktivieren` überträgt die ausgewählte Datei. Der Pi speichert sie dauerhaft und verwendet sie beim nächsten eigenen Start ohne Windows-Verbindung. Die Vorschau öffnet derzeit die unter Windows zugeordnete Medien-App.
 
 ## Aktueller Stand

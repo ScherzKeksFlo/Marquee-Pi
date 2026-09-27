@@ -37,8 +37,18 @@ function render() {
     return;
   }
 
-  if (view === "controls" && state.has_controls) {
-    stage.appendChild(makeMedia("/ui/game/controls" + stamp, false));
+  if (view === "default") {
+    stage.appendChild(makeMedia("/ui/default" + stamp, state.default_video));
+    return;
+  }
+  const artwork = {
+    controls: state.has_controls,
+    box_art: state.has_box_art,
+    logo: state.has_logo,
+    marquee: state.has_marquee
+  };
+  if (artwork[view]) {
+    stage.appendChild(makeMedia("/ui/game/" + view + stamp, false));
   } else if (state.has_marquee) {
     stage.appendChild(makeMedia("/ui/game/marquee" + stamp, false));
   } else {
@@ -81,8 +91,17 @@ stage.addEventListener("pointerup", (event) => {
     view = view === "marquee" ? "controls" : "marquee";
     render();
   } else if (kind && kind.startsWith("swipe-")) {
-    // Direction events are ready for later configurable actions.
-    window.dispatchEvent(new CustomEvent("arcade-gesture", { detail: { kind } }));
+    const action = currentState?.gesture_actions?.[kind] ?? "none";
+    if (["marquee", "box_art", "logo", "controls", "default"].includes(action)) {
+      view = action;
+      render();
+    } else if (action === "retroarch_menu") {
+      fetch("/ui/gesture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind })
+      }).catch(console.error);
+    }
   }
 });
 stage.addEventListener("pointercancel", (event) => recognizer.cancel(event.pointerId));

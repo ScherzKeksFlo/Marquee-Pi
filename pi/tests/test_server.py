@@ -29,6 +29,24 @@ class StateTests(unittest.TestCase):
             self.assertFalse((Path(directory) / name).exists())
             self.assertEqual(DisplayState(Path(directory), 60).active_file.name, replacement)
 
+    def test_gesture_configuration_and_retroarch_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = DisplayState(Path(directory), 60)
+            state.set_gestures({"swipe-left": "retroarch_menu",
+                                "swipe-right": "box_art"})
+            self.assertEqual(DisplayState(Path(directory), 60)
+                             .gesture_actions["swipe-right"], "box_art")
+            state.set_game("Test", {})
+            self.assertTrue(state.record_gesture("swipe-left"))
+            self.assertEqual(state.events_after(0)["events"],
+                             [{"id": 1, "action": "retroarch_menu"}])
+            self.assertEqual(state.events_after(1)["events"], [])
+            self.assertFalse(state.record_gesture("swipe-right"))
+            state.show_default()
+            self.assertFalse(state.record_gesture("swipe-left"))
+            with self.assertRaises(ValueError):
+                state.set_gestures({"swipe-up": "shutdown"})
+
     def test_corrupt_active_file_uses_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
             state = DisplayState(Path(directory), 60)
@@ -68,6 +86,32 @@ class ApiTests(unittest.TestCase):
                 )
                 with urlopen(request, timeout=3) as response:
                     self.assertEqual(response.status, 200)
+                gestures = Request(
+                    base + "/v1/gesture-config",
+                    data=json.dumps({"swipe-down": "retroarch_menu",
+                                     "swipe-right": "box_art"}).encode(),
+                    method="POST",
+                    headers={"X-Arcade-Token": "a" * 32,
+                             "Content-Type": "application/json"},
+                )
+                with urlopen(gestures, timeout=3) as response:
+                    self.assertEqual(response.status, 200)
+                touch = Request(
+                    base + "/ui/gesture",
+                    data=json.dumps({"kind": "swipe-down"}).encode(),
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urlopen(touch, timeout=3) as response:
+                    self.assertTrue(json.load(response)["queued"])
+                event_request = Request(
+                    base + "/v1/gesture-events?after=0",
+                    headers={"X-Arcade-Token": "a" * 32},
+                )
+                with urlopen(event_request, timeout=3) as response:
+                    events = json.load(response)
+                self.assertEqual(events["events"],
+                                 [{"id": 1, "action": "retroarch_menu"}])
                 power = Request(base + "/v1/shutdown", data=b"", method="POST",
                                 headers={"X-Arcade-Token": "a" * 32})
                 with self.assertRaises(HTTPError) as result:

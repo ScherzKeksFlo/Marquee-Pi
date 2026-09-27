@@ -11,11 +11,15 @@ Der Pi stellt eine HTTP-API auf dem konfigurierten Port bereit. Windows sendet b
 | `POST /v1/heartbeat` | Laufendes Spiel während der Windows-Verbindung bestätigen |
 | `POST /v1/default` | Spiel beenden und Standardmedium zeigen |
 | `POST /v1/default-media` | Standardmedium hochladen und nach Prüfung aktivieren |
+| `POST /v1/gesture-config` | Zuordnung der vier Wischgesten speichern |
+| `GET /v1/gesture-events?after=N` | Gestenereignisse für Windows nach fortlaufender ID abrufen |
 | `POST /v1/reload` | Aktives Medium erneut laden und Browseranzeige aktualisieren |
 | `POST /v1/reboot` | Pi-Neustart anfordern |
 | `POST /v1/shutdown` | Pi-Shutdown anfordern |
 
-`POST /v1/game` verwendet JSON. `title` ist erforderlich. `marquee` und `controls` sind optional und enthalten jeweils `extension` und `base64`. Dateipfade werden nicht übertragen, weil Windows-Pfade auf dem Pi nicht verfügbar sind. Bilder liegen für die laufende Sitzung im RAM. Wenn 60 Sekunden lang kein Heartbeat kommt, kehrt der Pi zum lokalen Standardmedium zurück. Der Timeout ist konfigurierbar.
+`POST /v1/game` verwendet JSON. `title` ist erforderlich. `marquee`, `controls`, `box_art` und `logo` sind optional und enthalten jeweils `extension` und `base64`. Dateipfade werden nicht übertragen, weil Windows-Pfade auf dem Pi nicht verfügbar sind. Bilder liegen für die laufende Sitzung im RAM. Wenn 60 Sekunden lang kein Heartbeat kommt, kehrt der Pi zum lokalen Standardmedium zurück. Der Timeout ist konfigurierbar.
+
+`POST /v1/gesture-config` verwendet ein JSON-Objekt mit den Gestenschlüsseln `swipe-down`, `swipe-up`, `swipe-right` und `swipe-left`. Gültige Aktionen sind `none`, `marquee`, `box_art`, `logo`, `controls`, `default` und `retroarch_menu`. Fehlende Schlüssel gelten als `none`; ungültige Werte werden abgewiesen. Die Zuordnung wird auf dem Pi dauerhaft gespeichert. Die lokale Seite meldet nur RetroArch-Gesten über `POST /ui/gesture`; Bildwechsel erfolgen direkt im Browser. Windows ruft `/v1/gesture-events?after=N` authentifiziert ab und erhält `instance_id` sowie eine Liste mit IDs. Bei Pi-Neustart ändert sich `instance_id`, damit Windows den Cursor zurücksetzt.
 
 `POST /v1/default-media` verwendet die Rohbytes der Datei. `X-File-Name` liefert die Endung. Die API prüft Typ und Größenlimit (derzeit 20 MiB); für MP4 muss `ffprobe` einen H.264-Videostream nachweisen. Die Datei wird erst nach vollständiger Prüfung dauerhaft aktiviert. Ein fehlgeschlagener Upload lässt das bisherige Medium aktiv.
 

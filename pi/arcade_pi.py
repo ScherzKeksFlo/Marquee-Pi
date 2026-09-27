@@ -32,6 +32,8 @@ SUPPORTED = {
 }
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
+GESTURES = ("swipe-down", "swipe-up", "swipe-right", "swipe-left")
+GESTURE_ACTIONS = ("none", "marquee", "box_art", "logo", "controls", "default", "retroarch_menu")
 
 
 def validate_media(data: bytes, extension: str) -> str:
@@ -84,6 +86,10 @@ class DisplayState:
         self.game_media: dict[str, tuple[bytes, str]] = {}
         self.last_heartbeat = 0.0
         self.version = 1
+        self.instance_id = uuid.uuid4().hex
+        self.gesture_actions = self._load_gestures()
+        self.gesture_events: list[dict] = []
+        self.next_gesture_id = 1
 
     def _load_active_file(self) -> Path | None:
         manifest = self.data_dir / "active.json"
@@ -99,6 +105,57 @@ class DisplayState:
             pass
         return None
 
+    def _load_gestures(self) -> dict[str, str]:
+        try:
+            actions = json.loads((self.data_dir / "gestures.json").read_text(encoding="utf-8"))
+            if isinstance(actions, dict):
+                return {kind: actions.get(kind, "none") if actions.get(kind) in GESTURE_ACTIONS
+                        else "none" for kind in GESTURES}
+        except (OSError, ValueError):
+            pass
+        return {kind: "none" for kind in GESTURES}
+
+    def set_gestures(self, actions: dict) -> None:
+        if not isinstance(actions, dict) or any(
+            kind not in GESTURES or action not in GESTURE_ACTIONS
+            for kind, action in actions.items()
+        ):
+            raise ValueError("Invalid gesture configuration")
+        configured = {kind: actions.get(kind, "none") for kind in GESTURES}
+        pending = self.data_dir / "gestures.json.pending"
+        with self.upload_lock:
+            try:
+                with pending.open("w", encoding="utf-8") as stream:
+                    json.dump(configured, stream)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(pending, self.data_dir / "gestures.json")
+                with self.lock:
+                    self.gesture_actions = configured
+                    self.version += 1
+            finally:
+                unlink_if_exists(pending)
+
+    def record_gesture(self, kind: str) -> bool:
+        if kind not in GESTURES:
+            raise ValueError("Invalid gesture")
+        with self.lock:
+            self._expire_game()
+            if self.gesture_actions[kind] != "retroarch_menu" or not self.game_title:
+                return False
+            event = {"id": self.next_gesture_id, "action": "retroarch_menu"}
+            self.next_gesture_id += 1
+            self.gesture_events.append(event)
+            self.gesture_events = self.gesture_events[-100:]
+            return True
+
+    def events_after(self, cursor: int) -> dict:
+        with self.lock:
+            return {
+                "instance_id": self.instance_id,
+                "events": [event for event in self.gesture_events if event["id"] > cursor][:20],
+            }
+
     def describe(self) -> dict:
         with self.lock:
             self._expire_game()
@@ -107,6 +164,10 @@ class DisplayState:
                 "game_title": self.game_title,
                 "has_marquee": "marquee" in self.game_media,
                 "has_controls": "controls" in self.game_media,
+                "has_box_art": "box_art" in self.game_media,
+                "has_logo": "logo" in self.game_media,
+                "gesture_actions": self.gesture_actions.copy(),
+                "instance_id": self.instance_id,
                 "default_name": self.active_file.name if self.active_file else None,
                 "default_video": bool(self.active_file and self.active_file.suffix.lower() == ".mp4"),
             }
@@ -235,6 +296,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._json(200, {"app_version": APP_VERSION, **self.server.state.describe()})
             return
+        if path == "/v1/gesture-events":
+            if not self._authorized():
+                self._json(401, {"error": "Unauthorized"})
+                return
+            try:
+                cursor = max(0, int(urlsplit(self.path).query.removeprefix("after=")))
+            except ValueError:
+                self._json(400, {"error": "Invalid cursor"})
+                return
+            self._json(200, self.server.state.events_after(cursor))
+            return
         if path == "/ui/state":
             self._json(200, self.server.state.describe())
             return
@@ -270,6 +342,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
+        if path == "/ui/gesture":
+            if not self._local():
+                self._json(403, {"error": "Local display only"})
+                return
+            try:
+                payload = json.loads(self._body())
+                queued = self.server.state.record_gesture(payload.get("kind", ""))
+                self._json(200, {"queued": queued})
+            except (ValueError, AttributeError, json.JSONDecodeError) as exc:
+                self._json(400, {"error": str(exc)})
+            return
         if not path.startswith("/v1/") or not self._authorized():
             self._json(401, {"error": "Unauthorized"})
             return
@@ -282,7 +365,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not title:
                     raise ValueError("Game title is required")
                 media = {}
-                for kind in ("marquee", "controls"):
+                for kind in ("marquee", "controls", "box_art", "logo"):
                     item = payload.get(kind)
                     if not item:
                         continue
@@ -298,6 +381,11 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("Game artwork must be an image")
                     media[kind] = (data, mime)
                 self.server.state.set_game(title, media)
+                self._json(200, {"ok": True})
+                return
+            if path == "/v1/gesture-config":
+                payload = json.loads(self._body())
+                self.server.state.set_gestures(payload)
                 self._json(200, {"ok": True})
                 return
             if path == "/v1/default-media":
@@ -340,7 +428,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args) -> None:
         request_line = str(args[0]) if args else ""
-        if request_line.startswith(("GET /ui/state ", "GET /v1/status ", "POST /v1/heartbeat ")):
+        if request_line.startswith(("GET /ui/state ", "GET /v1/status ", "GET /v1/gesture-events?", "POST /v1/heartbeat ")):
             return
         print("%s %s" % (self.address_string(), format % args), flush=True)
 

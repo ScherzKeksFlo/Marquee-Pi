@@ -47,6 +47,26 @@ internal sealed class PiClient : IDisposable
     public async Task CommandAsync(string command) =>
         await SendAsync(Request(HttpMethod.Post, "v1/" + command));
 
+    public async Task SetGestureConfigAsync(Dictionary<string, string>? actions)
+    {
+        using var content = new StringContent(
+            JsonSerializer.Serialize(actions ?? new Dictionary<string, string>()),
+            Encoding.UTF8, "application/json");
+        await SendAsync(Request(HttpMethod.Post, "v1/gesture-config", content));
+    }
+
+    public async Task<(string InstanceId, long[] EventIds)> GestureEventsAsync(long after)
+    {
+        var json = await SendAsync(Request(HttpMethod.Get, "v1/gesture-events?after=" + after));
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var instanceId = root.GetProperty("instance_id").GetString() ?? "";
+        var ids = root.GetProperty("events").EnumerateArray()
+            .Where(item => item.GetProperty("action").GetString() == "retroarch_menu")
+            .Select(item => item.GetProperty("id").GetInt64()).ToArray();
+        return (instanceId, ids);
+    }
+
     public async Task UploadDefaultAsync(string path)
     {
         var data = await File.ReadAllBytesAsync(path);
@@ -57,22 +77,33 @@ internal sealed class PiClient : IDisposable
         await SendAsync(request);
     }
 
-    private static object? Artwork(string? path)
+    private static object? Artwork(string? path, ref int remainingBytes)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
         var extension = Path.GetExtension(path).ToLowerInvariant();
         if (extension is not (".png" or ".jpg" or ".jpeg" or ".gif" or ".webp")) return null;
+        var info = new FileInfo(path);
+        if (info.Length > Math.Min(20 * 1024 * 1024, remainingBytes)) return null;
         var bytes = File.ReadAllBytes(path);
-        if (bytes.Length > 20 * 1024 * 1024) return null;
+        if (bytes.Length > remainingBytes) return null;
+        remainingBytes -= bytes.Length;
         return new { extension, base64 = Convert.ToBase64String(bytes) };
     }
 
     public async Task GameAsync(GameMessage game)
     {
+        // Base64 expands artwork by about one third; keep the whole JSON below the Pi limit.
+        var remainingBytes = 23 * 1024 * 1024;
+        var marquee = Artwork(game.MarqueePath, ref remainingBytes);
+        var controls = Artwork(game.ControlsPath, ref remainingBytes);
+        var boxArt = Artwork(game.BoxArtPath, ref remainingBytes);
+        var logo = Artwork(game.LogoPath, ref remainingBytes);
         var payload = new {
             title = game.Title,
-            marquee = Artwork(game.MarqueePath),
-            controls = Artwork(game.ControlsPath)
+            marquee,
+            controls,
+            box_art = boxArt,
+            logo
         };
         using var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         await SendAsync(Request(HttpMethod.Post, "v1/game", content));
@@ -87,4 +118,6 @@ internal sealed class GameMessage
     public string Title { get; set; } = "";
     public string? MarqueePath { get; set; }
     public string? ControlsPath { get; set; }
+    public string? BoxArtPath { get; set; }
+    public string? LogoPath { get; set; }
 }

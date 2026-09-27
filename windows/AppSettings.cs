@@ -6,6 +6,8 @@ internal sealed class AppSettings
 {
     public string PiUrl { get; set; } = "";
     public string Token { get; set; } = "";
+    public string RetroArchMenuHotkey { get; set; } = "F1";
+    public Dictionary<string, string> GestureActions { get; set; } = new();
 
     public static string DirectoryPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ArcadePiDisplay");

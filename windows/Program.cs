@@ -36,6 +36,9 @@ internal sealed class TrayContext : ApplicationContext
     private readonly ToolStripMenuItem statusItem;
     private GameMessage? currentGame;
     private bool needsSync;
+    private bool gestureConfigDirty = true;
+    private string piInstance = "";
+    private long gestureCursor;
     private bool checking;
     private int ticks;
 
@@ -51,6 +54,10 @@ internal sealed class TrayContext : ApplicationContext
         menu.Items.Add(statusItem);
         menu.Items.Add(new ToolStripSeparator());
         Add(menu, "Standardmedien verwalten…", () => new MediaForm(client).ShowDialog());
+        Add(menu, "Wischgesten einrichten…", () => {
+            using var form = new GestureSettingsForm(settings);
+            if (form.ShowDialog() == DialogResult.OK) gestureConfigDirty = true;
+        });
         Add(menu, "Standardlogo anzeigen", async () => {
             currentGame = null;
             needsSync = false;
@@ -67,6 +74,7 @@ internal sealed class TrayContext : ApplicationContext
             if (form.ShowDialog() == DialogResult.OK) {
                 client.UpdateSettings(settings);
                 needsSync = currentGame != null;
+                gestureConfigDirty = true;
             }
         });
         var autostart = new ToolStripMenuItem("Mit Windows starten") {
@@ -94,6 +102,7 @@ internal sealed class TrayContext : ApplicationContext
         timer.Tick += async (_, _) => await CheckAsync();
         timer.Start();
         _ = PipeLoopAsync(stop.Token);
+        _ = GestureLoopAsync(stop.Token);
         _ = CheckAsync();
     }
 
@@ -152,6 +161,11 @@ internal sealed class TrayContext : ApplicationContext
             if (currentGame != null && ++ticks % 3 == 0)
                 await client.CommandAsync("heartbeat");
             var json = await client.StatusAsync();
+            if (gestureConfigDirty)
+            {
+                await client.SetGestureConfigAsync(settings.GestureActions);
+                gestureConfigDirty = false;
+            }
             using var document = JsonDocument.Parse(json);
             var title = document.RootElement.GetProperty("game_title");
             var shown = title.ValueKind == JsonValueKind.String ? title.GetString() : "Standardmedium";
@@ -176,8 +190,41 @@ internal sealed class TrayContext : ApplicationContext
             statusItem.Text = "Pi nicht erreichbar";
             icon.Text = "Arcade Pi Display – Pi nicht erreichbar";
             if (currentGame != null) needsSync = true;
+            gestureConfigDirty = true;
         }
         finally { checking = false; }
+    }
+
+    private async Task GestureLoopAsync(CancellationToken cancellation)
+    {
+        while (!cancellation.IsCancellationRequested)
+        {
+            try
+            {
+                var batch = await client.GestureEventsAsync(gestureCursor);
+                if (batch.InstanceId != piInstance)
+                {
+                    piInstance = batch.InstanceId;
+                    gestureCursor = 0;
+                    gestureConfigDirty = true;
+                    if (currentGame != null) needsSync = true;
+                }
+                else
+                {
+                    foreach (var id in batch.EventIds)
+                    {
+                        if (id <= gestureCursor) continue;
+                        gestureCursor = id;
+                        if (currentGame != null)
+                            RetroArchHotkey.TrySend(settings.RetroArchMenuHotkey);
+                    }
+                }
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception) { }
+            try { await Task.Delay(750, cancellation); }
+            catch (OperationCanceledException) { break; }
+        }
     }
 
     private async Task PipeLoopAsync(CancellationToken cancellation)

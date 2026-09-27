@@ -117,7 +117,7 @@ Die Prüfung muss für den Dienstbenutzer erfolgen; beide `pkcheck`-Aufrufe müs
 1. Ohne Windows-Verbindung neu booten: gespeichertes Standardbild oder Video erscheint automatisch.
 2. Prüfen, dass `xset q` `timeout: 0` und `DPMS is Disabled` meldet, `xrandr` `DSI-1 connected 800x480` anzeigt und die Anzeige mindestens zehn Minuten sichtbar bleibt.
 3. Windows-Tool mit Pi-IP und Token verbinden. Spiel in LaunchBox/Big Box starten: passendes Marquee erscheint.
-4. Auf das Display tippen: Bei vorhandener Steuerungsgrafik zwischen Marquee und Control Panel wechseln. Wischgesten werden erkannt, haben derzeit noch keine Aktion.
+4. Auf das Display tippen: Bei vorhandener Steuerungsgrafik zwischen Marquee und Control Panel wechseln. Die vier Wischgesten werden im Windows-Tool konfiguriert; die gewählte Bildansicht erscheint sofort.
 5. Spiel verlassen: Standardmedium erscheint. Pi-Neustart über das Tray-Menü testen; Medium erscheint nach dem Booten erneut.
 6. Pi-Shutdown über das Tray-Menü erst nach allen anderen Tests durchführen.
 

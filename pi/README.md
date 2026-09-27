@@ -2,7 +2,7 @@
 
 Die vollständige Anleitung für eine frische Raspberry Pi OS Lite-Installation steht in [INSTALL.md](INSTALL.md). Die Trixie-Installation und Anzeige wurden auf einem Pi 3 B+ mit 7-Zoll-DSI-Display geprüft. Bei schwarzem DSI-Bild auf Kernel 6.18 beschreibt INSTALL.md den getesteten FKMS-Workaround.
 
-Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte API. Die Anzeige lädt ein auf dem Pi gespeichertes Standardbild oder Video, zeigt Spielgrafiken und verarbeitet Tippen sowie vier Wischrichtungen. Für Wischgesten sind noch keine Aktionen zugewiesen.
+Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte API. Die Anzeige lädt ein auf dem Pi gespeichertes Standardbild oder Video, zeigt Spielgrafiken und verarbeitet Tippen sowie vier Wischrichtungen. Die vier Wischgesten lassen sich im Windows-Tool unabhängig mit Bildansichten oder einer RetroArch-Tastenkombination belegen.
 
 ## Voraussetzungen
 

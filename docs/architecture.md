@@ -22,7 +22,7 @@ Die Grafik wird proportional in 800 × 480 eingepasst. Abschneiden ist standardm
 
 ## Touch-Gesten
 
-Das Pi-Programm erkennt ein kurzes Tippen und vier voneinander getrennte Wischgesten: oben nach unten, unten nach oben, links nach rechts und rechts nach links. Für jede erkannte Geste wird ein Ereignis mit Richtung und aktuellem Anzeigezustand erzeugt. Die Wischgesten haben vorerst keine zugewiesene Aktion. Die Zuordnung wird später konfigurierbar gemacht; ein nicht zugeordnetes Ereignis ändert die Anzeige nicht.
+Das Pi-Programm erkennt ein kurzes Tippen und vier voneinander getrennte Wischgesten: oben nach unten, unten nach oben, links nach rechts und rechts nach links. Für jede erkannte Geste wird ein Ereignis mit Richtung und aktuellem Anzeigezustand erzeugt. Die Wischgesten werden im Windows-Tool einzeln zugeordnet. Bildaktionen verarbeitet der Pi lokal; RetroArch-Gesten meldet er an die Windows-App. Eine nicht zugeordnete Geste ändert die Anzeige nicht.
 
 Die Erkennung nutzt Beginn, Bewegung und Ende einer einzelnen Berührung. Mindeststrecke, maximale Dauer und zulässige Querbewegung sollen konfigurierbar sein. Eine Wischbewegung darf kein Tippen auslösen; ein kurzer Tipp darf keine Wischbewegung auslösen. Mehrere gleichzeitige Berührungen werden zunächst ignoriert. Details und Abnahmekriterien stehen in [touch.md](touch.md).
 
