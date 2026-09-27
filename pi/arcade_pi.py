@@ -319,8 +319,7 @@ class Handler(BaseHTTPRequestHandler):
                 action = "reboot" if path.endswith("reboot") else "poweroff"
                 policy = "org.freedesktop.login1.reboot" if action == "reboot" else "org.freedesktop.login1.power-off"
                 authorization = subprocess.run(
-                    ["pkcheck", "--action-id", policy, "--process", str(os.getpid()),
-                     "--allow-user-interaction=no"],
+                    ["pkcheck", "--action-id", policy, "--process", str(os.getpid())],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
                 if authorization.returncode != 0:
                     self._json(503, {"error": "Power authorization unavailable"})
