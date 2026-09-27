@@ -10,6 +10,6 @@ Die benötigte `Unbroken.LaunchBox.Plugins.dll` muss aus der eigenen LaunchBox-I
 dotnet build launchbox-plugin/MarqueePiLaunchBox.csproj -c Release -p:LaunchBoxRoot="C:\Pfad\zu\LaunchBox"
 ```
 
-Die fertige `MarqueePiLaunchBox.dll` gehört nach `LaunchBox\Plugins\Marquee-Pi` und liegt auch dem portablen Windows-Paket bei. Gegen LaunchBox 14.0.1.2 auf dem Arcade-PC wurde sie mit x64 ohne Warnungen gebaut; das Laden durch Big Box und echte Spielereignisse werden noch geprüft.
+Die fertige `MarqueePiLaunchBox.dll` gehört nach `LaunchBox\Plugins\Marquee-Pi` und liegt auch dem portablen Windows-Paket bei. Gegen LaunchBox 14.0.1.2 auf dem Arcade-PC wurde sie mit x64 ohne Warnungen gebaut; das Laden durch Big Box sowie Spielstart und Spielende wurden am Zielsystem erfolgreich geprüft.
 
 LaunchBox dokumentiert, dass `OnGameExited()` bei manchen Launchern, darunter Steam, unmittelbar nach dem Start ausgelöst werden kann. Solche Spiele brauchen später eine gesonderte Prozessüberwachung oder Zuordnung.
