@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>ArcadePiLaunchBox</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Unbroken.LaunchBox.Plugins">
+      <HintPath>$(LaunchBoxRoot)\Metadata\Unbroken.LaunchBox.Plugins.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+  <Target Name="CheckLaunchBoxReference" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(LaunchBoxRoot)\Metadata\Unbroken.LaunchBox.Plugins.dll')"
+           Text="Set LaunchBoxRoot to the local LaunchBox directory (dotnet build -p:LaunchBoxRoot=...). The proprietary DLL is not included." />
+  </Target>
+</Project>

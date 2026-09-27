@@ -17,6 +17,7 @@ build/
 logs/
 media/
 *.local.json
+pi/config.json
 .env
 
 # Editors and OS

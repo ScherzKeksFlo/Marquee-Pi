@@ -1,0 +1,17 @@
+[Unit]
+Description=Arcade Pi Display API
+After=network.target
+
+[Service]
+Type=simple
+User=REPLACE_WITH_PI_USER
+ExecStart=/usr/bin/python3 /opt/arcade-pi-display/arcade_pi.py --config /etc/arcade-pi-display/config.json
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/arcade-pi-display
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

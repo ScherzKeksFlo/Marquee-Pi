@@ -1,21 +1,26 @@
-# Netzwerkprotokoll (Entwurf)
+# Netzwerkprotokoll v1
 
-Das Windows-Programm kommuniziert über die direkte Netzwerkverbindung mit dem Pi. Die erste Implementierung soll eine kleine HTTP-API mit Versionspräfix `/v1` und einem lokal konfigurierten gemeinsamen Zugriffstoken verwenden. Der Pi akzeptiert nur die konfigurierte Windows-Adresse. Zugangstoken und echte IP-Adressen stehen ausschließlich in lokalen Konfigurationsdateien, die Git ignoriert.
+Der Pi stellt eine HTTP-API auf dem konfigurierten Port bereit. Windows sendet bei jedem `/v1`-Aufruf den Header `X-Arcade-Token`. Ein optionales `allowed_client_ips` begrenzt zusätzlich die Windows-Adressen; eine leere Liste bedeutet keine IP-Filterung. Die Vollbildseite unter `/ui/` ist nur von `127.0.0.1` bzw. `::1` erreichbar. Die direkte Verbindung sollte nicht ins öffentliche Netz weitergeleitet werden.
 
-## Geplante Operationen
+## Operationen
 
-| Operation | Zweck |
+| Aufruf | Zweck |
 | --- | --- |
-| `GET /v1/status` | Version, Zustand, Spielkennung und Bereitschaft lesen |
-| `POST /v1/game` | Spielkennung und verfügbare Bildtypen setzen |
-| `POST /v1/default` | Auf Standardanzeige zurücksetzen |
-| `POST /v1/default-media` | Neues Standardmedium übertragen, prüfen und erst danach aktivieren |
-| `POST /v1/reload` | Anzeige und Konfiguration neu laden |
-| `POST /v1/reboot` | Pi neu starten |
-| `POST /v1/shutdown` | Pi herunterfahren |
+| `GET /v1/status` | Programmversion, Spiel und aktives Standardmedium lesen |
+| `POST /v1/game` | Spiel und Artwork setzen |
+| `POST /v1/heartbeat` | Laufendes Spiel während der Windows-Verbindung bestätigen |
+| `POST /v1/default` | Spiel beenden und Standardmedium zeigen |
+| `POST /v1/default-media` | Standardmedium hochladen und nach Prüfung aktivieren |
+| `POST /v1/reload` | Aktives Medium erneut laden und Browseranzeige aktualisieren |
+| `POST /v1/reboot` | Pi-Neustart anfordern |
+| `POST /v1/shutdown` | Pi-Shutdown anfordern |
 
-Spielgrafiken müssen vom Windows-Rechner zum Pi übertragen werden; Windows-Dateipfade allein sind auf dem Pi nicht lesbar. Das Standardmedium wird separat übertragen und auf dem Pi dauerhaft gespeichert. Uploads müssen vor der Aktivierung vollständig validiert werden; ein fehlgeschlagener Upload lässt das bisherige Standardmedium aktiv. Das endgültige Medienformat, Größenlimit, Caching und Fehlerformat werden zusammen mit der Implementierung festgelegt. Befehle zum Neustart oder Herunterfahren müssen eine eindeutige Bestätigung liefern, bevor die Verbindung endet.
+`POST /v1/game` verwendet JSON. `title` ist erforderlich. `marquee` und `controls` sind optional und enthalten jeweils `extension` und `base64`. Dateipfade werden nicht übertragen, weil Windows-Pfade auf dem Pi nicht verfügbar sind. Bilder liegen für die laufende Sitzung im RAM. Wenn 60 Sekunden lang kein Heartbeat kommt, kehrt der Pi zum lokalen Standardmedium zurück. Der Timeout ist konfigurierbar.
+
+`POST /v1/default-media` verwendet die Rohbytes der Datei. `X-File-Name` liefert die Endung. Die API prüft Typ und Größenlimit (derzeit 20 MiB); für MP4 muss `ffprobe` einen H.264-Videostream nachweisen. Die Datei wird erst nach vollständiger Prüfung dauerhaft aktiviert. Ein fehlgeschlagener Upload lässt das bisherige Medium aktiv.
+
+Erfolgreiche Änderungen liefern JSON mit `ok: true`. Fehler liefern einen HTTP-Status und ein JSON-`error`. Neustart und Shutdown bestätigen den angenommenen Befehl, bevor die Pi-Verbindung endet.
 
 ## Wiederverbindung
 
-Windows sendet nach einem Verbindungsaufbau den aktuellen Anzeigezustand erneut. Der Pi zeigt ohne Verbindung sein lokales Standardmedium. Der Verlust einer Verbindung löst keinen Pi-Shutdown aus, damit Windows-Neustarts möglich bleiben.
+Das Windows-Tool merkt sich das laufende Spiel und sendet es nach einer wiederhergestellten Pi-Verbindung erneut. Der Pi zeigt ohne Verbindung sein lokal gespeichertes Standardmedium. Ein Netzwerkverlust löst keinen Pi-Shutdown aus, damit Windows neu gestartet werden kann.
