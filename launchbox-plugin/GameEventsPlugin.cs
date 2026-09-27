@@ -15,11 +15,11 @@ namespace ArcadePiLaunchBox
     {
         private const string PipeName = "ArcadePiDisplayGameEvents";
 
-        public void OnBeforeGameLaunching(IGame game, IAdditionalApplication app, IEmulator emulator)
+        public void OnBeforeGameLaunching(IGame? game, IAdditionalApplication? app, IEmulator? emulator)
         {
         }
 
-        public void OnAfterGameLaunched(IGame game, IAdditionalApplication app, IEmulator emulator)
+        public void OnAfterGameLaunched(IGame? game, IAdditionalApplication? app, IEmulator? emulator)
         {
             if (game == null) return;
             var marquee = FirstExisting(
@@ -45,7 +45,7 @@ namespace ArcadePiLaunchBox
             Send(new GameMessage { Action = "exit" });
         }
 
-        private static string FirstImage(IGame game, string imageType)
+        private static string? FirstImage(IGame game, string imageType)
         {
             try
             {
@@ -55,7 +55,7 @@ namespace ArcadePiLaunchBox
             catch { return null; }
         }
 
-        private static string FirstExisting(params string[] candidates)
+        private static string? FirstExisting(params string?[] candidates)
         {
             foreach (var candidate in candidates)
             {
@@ -65,7 +65,7 @@ namespace ArcadePiLaunchBox
             return null;
         }
 
-        private static string Resolve(string candidate)
+        private static string? Resolve(string? candidate)
         {
             if (string.IsNullOrWhiteSpace(candidate)) return null;
             try
@@ -112,10 +112,10 @@ namespace ArcadePiLaunchBox
         [DataContract]
         private sealed class GameMessage
         {
-            [DataMember] public string Action { get; set; }
-            [DataMember] public string Title { get; set; }
-            [DataMember] public string MarqueePath { get; set; }
-            [DataMember] public string ControlsPath { get; set; }
+            [DataMember] public string Action { get; set; } = "";
+            [DataMember] public string Title { get; set; } = "";
+            [DataMember] public string? MarqueePath { get; set; }
+            [DataMember] public string? ControlsPath { get; set; }
         }
     }
 }

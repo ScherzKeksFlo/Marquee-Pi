@@ -98,11 +98,13 @@ internal sealed class TrayContext : ApplicationContext
 
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunName = "ArcadePiDisplay";
+    private static string StartupLink => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.Startup), "ArcadePiDisplay.lnk");
 
     private static bool IsAutostartEnabled()
     {
         using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-        return key?.GetValue(RunName) is string;
+        return File.Exists(StartupLink) || key?.GetValue(RunName) is string;
     }
 
     private static void SetAutostart(bool enabled)
@@ -110,6 +112,7 @@ internal sealed class TrayContext : ApplicationContext
         using var key = Registry.CurrentUser.CreateSubKey(RunKey);
         if (!enabled) {
             key.DeleteValue(RunName, false);
+            if (File.Exists(StartupLink)) File.Delete(StartupLink);
             return;
         }
         var path = Environment.ProcessPath;
@@ -117,6 +120,7 @@ internal sealed class TrayContext : ApplicationContext
             !Path.GetFileName(path).Equals("ArcadePiTray.exe", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Autostart erst mit der veröffentlichten ArcadePiTray.exe aktivieren.");
         key.SetValue(RunName, "\"" + path + "\"");
+        if (File.Exists(StartupLink)) File.Delete(StartupLink);
     }
 
     private static void Add(ContextMenuStrip menu, string text, Action action)

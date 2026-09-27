@@ -5,16 +5,19 @@
     <AssemblyName>ArcadePiLaunchBox</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <LaunchBoxPluginDll Condition="Exists('$(LaunchBoxRoot)\Core\Unbroken.LaunchBox.Plugins.dll')">$(LaunchBoxRoot)\Core\Unbroken.LaunchBox.Plugins.dll</LaunchBoxPluginDll>
+    <LaunchBoxPluginDll Condition="'$(LaunchBoxPluginDll)' == ''">$(LaunchBoxRoot)\Metadata\Unbroken.LaunchBox.Plugins.dll</LaunchBoxPluginDll>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Unbroken.LaunchBox.Plugins">
-      <HintPath>$(LaunchBoxRoot)\Metadata\Unbroken.LaunchBox.Plugins.dll</HintPath>
+      <HintPath>$(LaunchBoxPluginDll)</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="System.Runtime.Serialization" />
   </ItemGroup>
   <Target Name="CheckLaunchBoxReference" BeforeTargets="ResolveReferences">
-    <Error Condition="!Exists('$(LaunchBoxRoot)\Metadata\Unbroken.LaunchBox.Plugins.dll')"
+    <Error Condition="!Exists('$(LaunchBoxPluginDll)')"
            Text="Set LaunchBoxRoot to the local LaunchBox directory (dotnet build -p:LaunchBoxRoot=...). The proprietary DLL is not included." />
   </Target>
 </Project>
