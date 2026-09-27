@@ -68,6 +68,11 @@ class ApiTests(unittest.TestCase):
                 )
                 with urlopen(request, timeout=3) as response:
                     self.assertEqual(response.status, 200)
+                power = Request(base + "/v1/shutdown", data=b"", method="POST",
+                                headers={"X-Arcade-Token": "a" * 32})
+                with self.assertRaises(HTTPError) as result:
+                    urlopen(power, timeout=3)
+                self.assertEqual(result.exception.code, 503)
                 request = Request(base + "/v1/status", headers={"X-Arcade-Token": "a" * 32})
                 with urlopen(request, timeout=3) as response:
                     status = json.load(response)

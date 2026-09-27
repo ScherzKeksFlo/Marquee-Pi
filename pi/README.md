@@ -19,7 +19,7 @@ Erster lauffähiger Stand für Raspberry Pi OS mit Python 3 und Chromium. Der Py
 
 `arcade-pi-display.service.example` ist eine Vorlage für den Systemstart. Benutzername und Pfade müssen zur Pi-Installation passen. Die grafische Sitzung muss Chromium automatisch starten. Bei einem schreibgeschützten Overlay muss der Datenordner auf einer separat beschreibbaren Partition liegen; sonst gehen Uploads beim nächsten Neustart verloren.
 
-Die API-Befehle zum Neustarten und Herunterfahren verwenden `sudo -n systemctl reboot` bzw. `poweroff`. Der Dienstbenutzer benötigt dafür eine eng begrenzte `sudoers`-Regel. Diese Einrichtung und die Bootzeit werden am tatsächlichen Pi geprüft.
+Die API-Befehle zum Neustarten und Herunterfahren sind standardmäßig deaktiviert und antworten mit HTTP 503. Der vorhandene Befehlsweg nutzt `sudo -n systemctl reboot` bzw. `poweroff`; die Dienstvorlage setzt `NoNewPrivileges=true`, weshalb dieser Weg dort noch nicht funktionsfähig ist. `power_commands_enabled` erst nach Einrichtung und Prüfung einer eng begrenzten Rechtevergabe aktivieren.
 
 ## Tests
 

@@ -16,11 +16,11 @@ Die Richtung beschreibt die Fingerbewegung, nicht die Position, an der sie begin
 
 - Pro Berührung wird höchstens ein Ereignis erzeugt, und zwar erst beim Loslassen.
 - Die längere Bewegungsachse bestimmt die Wischrichtung. Eine kleine seitliche Abweichung bleibt erlaubt.
-- Mindeststrecke, maximale Dauer und zulässige Abweichung sind konfigurierbar. Ausgangswerte werden am echten 800 × 480 Touchdisplay erprobt.
+- Mindeststrecke, maximale Dauer und zulässige Abweichung sind im Prototyp festgelegt. Die Werte werden am echten 800 × 480 Touchdisplay erprobt und danach konfigurierbar gemacht.
 - Eine Bewegung oberhalb der Tippgrenze darf den Tippwechsel nicht auslösen.
 - Nicht eindeutige oder abgebrochene Eingaben bleiben ohne Aktion.
 - Mehrere gleichzeitige Finger werden in der ersten Version ignoriert.
-- Bei gedrehtem Display gelten die Richtungen aus Sicht des Benutzers. Dazu werden Touch-Koordinaten vor der Klassifikation an die Displayausrichtung angepasst.
+- Bei gedrehtem Display gelten die Richtungen aus Sicht des Benutzers. Die physische Ausrichtung wird am Pi eingestellt; eine gesonderte Koordinatentransformation enthält der Prototyp noch nicht.
 - Spielstart, Spielende und Verbindungswechsel setzen einen laufenden, noch nicht abgeschlossenen Touch-Vorgang zurück.
 
 ## Abnahme am Gerät

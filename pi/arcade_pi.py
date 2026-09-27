@@ -174,11 +174,12 @@ class DisplayState:
 class Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, state: DisplayState, token: str, allowed_clients=None):
+    def __init__(self, address, state: DisplayState, token: str, allowed_clients=None, power_commands_enabled=False):
         super().__init__(address, Handler)
         self.state = state
         self.token = token
         self.allowed_clients = set(allowed_clients or [])
+        self.power_commands_enabled = power_commands_enabled
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -305,6 +306,9 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/v1/reload":
                 self.server.state.reload()
             elif path in ("/v1/reboot", "/v1/shutdown"):
+                if not self.server.power_commands_enabled:
+                    self._json(503, {"error": "Power commands are not configured"})
+                    return
                 action = "reboot" if path.endswith("reboot") else "poweroff"
                 threading.Timer(0.5, lambda: subprocess.run(
                     ["sudo", "-n", "systemctl", action], check=False
@@ -333,7 +337,7 @@ def main() -> None:
     data_dir = Path(config["data_dir"]).expanduser().resolve()
     state = DisplayState(data_dir, int(config.get("game_timeout_seconds", 60)))
     server = Server((config.get("bind", "0.0.0.0"), int(config.get("port", 8765))), state, token,
-                    config.get("allowed_client_ips", []))
+                    config.get("allowed_client_ips", []), bool(config.get("power_commands_enabled", False)))
     print("Arcade Pi Display listening on %s:%s" % server.server_address, flush=True)
     server.serve_forever()
 

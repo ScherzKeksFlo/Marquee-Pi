@@ -22,7 +22,7 @@ Zwischen Einschalten und Start der grafischen Ausgabe kann der Pi nur seine norm
 | `.webp` | Statisches Logo | Animiertes WebP erst nach Test am Pi freigeben |
 | `.mp4` | Video in Endlosschleife | H.264-Videostream; Audio wird ignoriert |
 
-Eine Dateiendung allein genügt nicht: Das Tool prüft den tatsächlichen Medientyp, bei MP4 auch den Videocodec, und meldet nicht unterstützte Dateien vor der Aktivierung. Dateigröße, Auflösung und Animationsdauer erhalten dokumentierte und konfigurierbare Grenzen. Der Zielbildschirm hat 800 × 480 Pixel; Medien werden proportional eingepasst, ohne standardmäßig etwas abzuschneiden. Videos werden beim Wechsel zu einem Spiel gestoppt und beim Rücksprung zum Standardmedium neu gestartet.
+Eine Dateiendung allein genügt nicht: Das Tool prüft den tatsächlichen Medientyp, bei MP4 auch den Videocodec, und meldet nicht unterstützte Dateien vor der Aktivierung. Im Prototyp gilt ein festes Limit von 20 MB pro Datei. Grenzen für Auflösung und Animationsdauer werden nach dem Gerätetest festgelegt. Der Zielbildschirm hat 800 × 480 Pixel; Medien werden proportional eingepasst, ohne standardmäßig etwas abzuschneiden. Videos werden beim Wechsel zu einem Spiel gestoppt und beim Rücksprung zum Standardmedium neu gestartet.
 
 APNG kann später ergänzt werden, falls animierte Transparenz gebraucht wird. SVG kann bei Bedarf beim Import in PNG umgewandelt werden. Für die erste Version sind zusätzliche Video-Container und H.265/VP9 nicht vorgesehen, da sie auf dem Pi 3 B+ keinen Vorteil für diesen Bildschirm bieten.
 

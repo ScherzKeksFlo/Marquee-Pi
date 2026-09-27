@@ -32,13 +32,13 @@ Das Windows-Tool verwaltet eigene Standardbilder und Animationen, zeigt eine Vor
 
 ## Pi-Steuerbefehle
 
-- `reload`: Anzeige und Konfiguration neu laden, ohne Betriebssystem-Neustart.
+- `reload`: Aktives Standardmedium aus dem lokalen Speicher neu laden, ohne Betriebssystem-Neustart.
 - `show-default`: Standardmedium anzeigen.
 - `reboot`: Pi sauber neu starten.
 - `shutdown`: Pi sauber herunterfahren. Wiederanlauf erfordert einen neuen Stromzyklus der Funksteckdose.
 - `status`: Erreichbarkeit, Programmversion, aktueller Zustand und aktives Spiel abfragen.
 
-Die konkrete Netzwerk-API ist in [protocol.md](protocol.md) festzulegen. Sie bleibt auf die direkte Verbindung beschränkt und benötigt Authentifizierung. Lokale Zugangsdaten werden nicht in Git gespeichert.
+Die konkrete Netzwerk-API steht in [protocol.md](protocol.md). Sie bleibt auf die direkte Verbindung beschränkt und benötigt Authentifizierung. Lokale Zugangsdaten werden nicht in Git gespeichert.
 
 ## Ausschalten
 
