@@ -1,8 +1,8 @@
 # Arcade Pi Display
 
-Ein geplanter Begleitbildschirm für LaunchBox/Big Box auf Windows 11 und einen Raspberry Pi 3 B+ mit 7-Zoll-Touchdisplay (800 × 480).
+Ein Begleitbildschirm für LaunchBox/Big Box auf Windows 11 und einen Raspberry Pi 3 B+ mit 7-Zoll-Touchdisplay (800 × 480).
 
-> Projektstatus: Erster Quellcode für Pi-Anzeige, Touch-Erkennung, Windows-Taskleiste und LaunchBox-Plugin. Pi-Anzeige ist auf dem Raspberry Pi 3 B+ installiert und nach Neustart geprüft. Windows-Build ist lokal geprüft; LaunchBox-Anbindung und automatische Abschaltung stehen aus.
+> Projektstatus: Pi-Anzeige und Windows-Taskleistenprogramm sind auf dem Zielsystem installiert. Ein realer Spielstart aus Big Box hat das passende Marquee angezeigt und nach Spielende wieder zur Standardanimation gewechselt. Die automatische Pi-Abschaltung beim vollständigen Windows-Shutdown steht noch aus.
 
 ## Geplantes Verhalten
 
