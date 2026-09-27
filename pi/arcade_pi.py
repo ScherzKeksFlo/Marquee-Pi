@@ -65,6 +65,13 @@ def verify_mp4(path: Path) -> None:
         raise ValueError("MP4 must contain an H.264 video stream")
 
 
+def unlink_if_exists(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
 class DisplayState:
     def __init__(self, data_dir: Path, timeout_seconds: int):
         self.lock = threading.RLock()
@@ -162,13 +169,13 @@ class DisplayState:
                 self.version += 1
             if previous and previous != target:
                 try:
-                    previous.unlink(missing_ok=True)
+                    unlink_if_exists(previous)
                 except OSError:
                     pass
             return name
         finally:
-            pending.unlink(missing_ok=True)
-            pending_manifest.unlink(missing_ok=True)
+            unlink_if_exists(pending)
+            unlink_if_exists(pending_manifest)
 
 
 class Server(ThreadingHTTPServer):
@@ -246,7 +253,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, data, mime)
             return
         if path.startswith("/ui/game/"):
-            kind = path.removeprefix("/ui/game/")
+            kind = path[len("/ui/game/"):]
             with self.server.state.lock:
                 media = self.server.state.game_media.get(kind)
             if media:

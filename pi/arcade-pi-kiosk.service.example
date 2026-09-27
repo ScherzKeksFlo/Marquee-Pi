@@ -1,0 +1,20 @@
+[Unit]
+Description=Arcade Pi Display kiosk
+After=arcade-pi-display.service
+Requires=arcade-pi-display.service
+
+[Service]
+Type=simple
+User=REPLACE_WITH_PI_USER
+Group=REPLACE_WITH_PI_USER
+WorkingDirectory=/home/REPLACE_WITH_PI_USER
+Environment=HOME=/home/REPLACE_WITH_PI_USER
+PAMName=login
+TTYPath=/dev/tty7
+StandardInput=tty
+ExecStart=/usr/bin/xinit /opt/arcade-pi-display/start-kiosk.sh -- /usr/bin/Xorg :0 vt7 -nolisten tcp
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target

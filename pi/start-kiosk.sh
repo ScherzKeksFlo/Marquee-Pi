@@ -13,4 +13,5 @@ fi
 
 exec "$BROWSER" --kiosk --no-first-run --noerrdialogs \
   --disable-session-crashed-bubble --disable-infobars \
+  --disable-translate --lang=de-DE \
   http://127.0.0.1:8765/ui/
