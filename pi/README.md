@@ -1,12 +1,12 @@
 # Pi-Anzeigeprogramm
 
-Die vollständige Anleitung für eine frische Raspberry Pi OS Lite-Installation steht in [INSTALL.md](INSTALL.md). Die Trixie-Schritte müssen noch am Zielgerät geprüft werden.
+Die vollständige Anleitung für eine frische Raspberry Pi OS Lite-Installation steht in [INSTALL.md](INSTALL.md). Die Trixie-Installation und Anzeige wurden auf einem Pi 3 B+ mit 7-Zoll-DSI-Display geprüft. Bei schwarzem DSI-Bild auf Kernel 6.18 beschreibt INSTALL.md den getesteten FKMS-Workaround.
 
 Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte API. Die Anzeige lädt ein auf dem Pi gespeichertes Standardbild oder Video, zeigt Spielgrafiken und verarbeitet Tippen sowie vier Wischrichtungen. Für Wischgesten sind noch keine Aktionen zugewiesen.
 
 ## Voraussetzungen
 
-- Raspberry Pi OS mit X11, `xinit`, `xset` (`x11-xserver-utils`) und Chromium (am Pi 3 B+ mit Buster/Python 3.7 geprüft)
+- Raspberry Pi OS Lite mit X11, `xinit`, `xset` (`x11-xserver-utils`) und Chromium (am Pi 3 B+ mit Trixie/Python 3.13 geprüft)
 - Python 3
 - `ffprobe` aus FFmpeg für MP4-Uploads
 - Ein dauerhaft beschreibbarer Datenordner für das Standardmedium

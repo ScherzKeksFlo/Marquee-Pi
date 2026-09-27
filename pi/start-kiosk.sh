@@ -19,7 +19,12 @@ else
   echo "xset is required to disable X11 screen blanking." >&2
 fi
 
+if command -v xrandr >/dev/null 2>&1 && xrandr --query | grep -q '^Composite-1 connected' && xrandr --query | grep -q '^DSI-1 connected'; then
+  xrandr --output Composite-1 --off --output DSI-1 --primary --auto
+fi
+
 exec "$BROWSER" --kiosk --no-first-run --noerrdialogs \
   --disable-session-crashed-bubble --disable-infobars \
-  --disable-features=Translate,TranslateUI --lang=de-DE \
+  --disable-features=Translate,TranslateUI --disable-gpu --disable-gpu-compositing \
+  --lang=de-DE \
   http://127.0.0.1:8765/ui/

@@ -50,6 +50,9 @@ sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin ar
 sudo install -d -o root -g root -m 755 /opt/arcade-pi-display
 sudo cp -a arcade_pi.py start-kiosk.sh static /opt/arcade-pi-display/
 sudo chmod 755 /opt/arcade-pi-display/start-kiosk.sh
+sudo install -d -m 755 /etc/X11/xorg.conf.d /etc/chromium/policies/managed
+sudo install -m 644 xorg-modesetting.example.conf /etc/X11/xorg.conf.d/20-arcade-modesetting.conf
+sudo install -m 644 chromium-policy.example.json /etc/chromium/policies/managed/arcade-pi-display.json
 sudo install -d -o arcadepi -g arcadepi -m 750 /var/lib/arcade-pi-display
 sudo install -d -o root -g arcadepi -m 750 /etc/arcade-pi-display
 sudo install -o root -g arcadepi -m 640 config.example.json /etc/arcade-pi-display/config.json
@@ -66,13 +69,35 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now arcade-pi-display.service arcade-pi-kiosk.service
 ```
 
-Die Kiosk-Vorlage startet auch auf der Lite-Edition (`multi-user.target`). `start-kiosk.sh` setzt den X11-Bildschirmschoner auf Timeout 0, deaktiviert DPMS und unterdrückt die Chromium-Übersetzungsleiste. Prüfen mit:
+Die Kiosk-Vorlage startet auch auf der Lite-Edition (`multi-user.target`). `start-kiosk.sh` setzt den X11-Bildschirmschoner auf Timeout 0, deaktiviert DPMS und nutzt Software-Rendering, um die GPU des Pi 3 B+ zu entlasten. Die Xorg-Konfiguration wählt nur den `modesetting`-Treiber für DSI und verhindert einen zweiten `fbdev`-Bildschirm. Die Chromium-Richtlinie deaktiviert die Übersetzungsleiste. Prüfen mit:
 
 ```sh
 systemctl is-active arcade-pi-display arcade-pi-kiosk
 sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xset q
 sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr --current
 ```
+
+## Schwarzes DSI-Display auf dem Pi 3 B+
+
+Auf dem getesteten Pi 3 B+ mit Trixie und Kernel 6.18 blieb das 7-Zoll-Display nach dem Booten beleuchtet, aber schwarz, obwohl `xrandr` `DSI-1 connected` meldete. Der Firmware-Startbildschirm erschien kurz. Hier funktionierte der mitgelieferte FKMS-Treiber:
+
+```ini
+# /boot/firmware/config.txt
+dtoverlay=vc4-fkms-v3d
+#disable_fw_kms_setup=1
+```
+
+Die vorhandene Zeile `dtoverlay=vc4-kms-v3d` ersetzen und `disable_fw_kms_setup=1` auskommentieren; die Datei vorher sichern. Nach einem Neustart muss `xrandr` `DSI-1 connected` zeigen. FKMS kann zusätzlich `Composite-1` aktivieren; `start-kiosk.sh` schaltet diesen Ausgang automatisch ab, wenn DSI angeschlossen ist. Diesen Workaround nur bei dem beschriebenen Fehler einsetzen, da andere Pi-Modelle und Displays mit KMS funktionieren können.
+
+## Standardvideo auf einem Pi 3 B+
+
+Für MP4-Videos H.264 mit `yuv420p` verwenden und die Bildgröße möglichst an das 800 × 480-Display anpassen. Ein hochgeladenes 1254 × 1254-H.264-Video ließ sich auf dem Testgerät nicht zuverlässig im Chromium-Kiosk abspielen; eine 480 × 480-Version lief. Beispiel für eine quadratische Vorlage:
+
+```sh
+ffmpeg -i eingabe.mp4 -vf "scale=480:480:flags=lanczos" -c:v libx264 -preset veryfast -profile:v baseline -level 3.0 -pix_fmt yuv420p -crf 23 -an ausgabe.mp4
+```
+
+Die Datei `ausgabe.mp4` über das Windows-Tool als Standardmedium hochladen. Das Original außerhalb des Pi-Datenordners aufbewahren.
 
 ## Neustart und Ausschalten per Windows-Tool
 
