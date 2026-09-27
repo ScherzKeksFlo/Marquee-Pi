@@ -7,4 +7,8 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ArcadePiTray</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\connected.ico" LogicalName="ArcadePiTray.ConnectedIcon" />
+    <EmbeddedResource Include="Resources\disconnected.ico" LogicalName="ArcadePiTray.DisconnectedIcon" />
+  </ItemGroup>
 </Project>

@@ -1,6 +1,6 @@
 # Touchbedienung
 
-Ein kurzer Tipp schaltet während eines Spiels zwischen Marquee und Steuerungsbelegung um, sofern eine Steuerungsgrafik vorhanden ist. Die vier Wischrichtungen werden im Windows-Infobereich unter **Wischgesten einrichten…** unabhängig konfiguriert.
+Ein kurzer Tipp schaltet während eines Spiels zwischen Marquee und Steuerungsbelegung um, sofern eine Steuerungsgrafik vorhanden ist. Die vier Wischrichtungen werden im Windows-Infobereich unter **Einstellungen… → Wischgesten** unabhängig konfiguriert.
 
 | Geste | Fingerbewegung |
 | --- | --- |

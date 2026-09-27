@@ -1,6 +1,6 @@
 using System.Drawing;
+using System.Reflection;
 using System.IO.Pipes;
-using Microsoft.Win32;
 using System.Text.Json;
 
 namespace ArcadePiTray;
@@ -29,6 +29,8 @@ internal sealed class TrayContext : ApplicationContext
     private readonly AppSettings settings;
     private readonly PiClient client;
     private readonly NotifyIcon icon;
+    private readonly Icon connectedIcon;
+    private readonly Icon disconnectedIcon;
     private readonly ShutdownWindow dispatcher;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 5000 };
     private readonly CancellationTokenSource stop = new();
@@ -48,16 +50,17 @@ internal sealed class TrayContext : ApplicationContext
         this.client = client;
         dispatcher = new ShutdownWindow(new ShutdownCoordinator(client));
         _ = dispatcher.Handle;
+        try {
+            if (settings.StartWithWindows != AutostartManager.IsEnabled())
+                AutostartManager.SetEnabled(settings.StartWithWindows);
+        }
+        catch (Exception error) { MessageBox.Show(error.Message, "Autostart"); }
 
         var menu = new ContextMenuStrip();
         statusItem = new ToolStripMenuItem("Pi: Verbindung wird geprüft") { Enabled = false };
         menu.Items.Add(statusItem);
         menu.Items.Add(new ToolStripSeparator());
         Add(menu, "Standardmedien verwalten…", () => new MediaForm(client).ShowDialog());
-        Add(menu, "Wischgesten einrichten…", () => {
-            using var form = new GestureSettingsForm(settings);
-            if (form.ShowDialog() == DialogResult.OK) gestureConfigDirty = true;
-        });
         Add(menu, "Standardlogo anzeigen", async () => {
             currentGame = null;
             needsSync = false;
@@ -69,30 +72,29 @@ internal sealed class TrayContext : ApplicationContext
         Add(menu, "Pi herunterfahren", async () => await ConfirmCommandAsync("shutdown",
             "Pi wirklich herunterfahren? Er startet erst nach einem neuen Stromzyklus."));
         menu.Items.Add(new ToolStripSeparator());
-        Add(menu, "Verbindung einrichten…", () => {
-            using var form = new SettingsForm(settings);
-            if (form.ShowDialog() == DialogResult.OK) {
-                client.UpdateSettings(settings);
-                needsSync = currentGame != null;
-                gestureConfigDirty = true;
-            }
+        Add(menu, "Einstellungen…", () => {
+            using var form = new SettingsForm(settings, client);
+            if (form.ShowDialog() == DialogResult.OK) SettingsChanged();
         });
-        var autostart = new ToolStripMenuItem("Mit Windows starten") {
-            Checked = IsAutostartEnabled(),
-            CheckOnClick = true
-        };
-        autostart.Click += (_, _) => {
-            try { SetAutostart(autostart.Checked); }
-            catch (Exception error) {
-                autostart.Checked = !autostart.Checked;
-                MessageBox.Show(error.Message, "Autostart");
+        Add(menu, "INI-Datei öffnen", () => System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo(AppSettings.FilePath) { UseShellExecute = true }));
+        Add(menu, "Einstellungen neu laden", () => {
+            try {
+                var loaded = AppSettings.Load();
+                if (!loaded.IsConfigured || !RetroArchHotkey.TryParse(loaded.RetroArchMenuHotkey, out _))
+                    throw new InvalidDataException("INI enthält keine gültige Verbindung oder Tastenkombination.");
+                AutostartManager.SetEnabled(loaded.StartWithWindows);
+                settings.CopyFrom(loaded);
+                SettingsChanged();
             }
-        };
-        menu.Items.Add(autostart);
+            catch (Exception error) { MessageBox.Show(error.Message, "Einstellungen neu laden"); }
+        });
         Add(menu, "Programm beenden", ExitThread);
 
+        connectedIcon = LoadIcon("ArcadePiTray.ConnectedIcon");
+        disconnectedIcon = LoadIcon("ArcadePiTray.DisconnectedIcon");
         icon = new NotifyIcon {
-            Icon = SystemIcons.Application,
+            Icon = disconnectedIcon,
             Text = "Arcade Pi Display",
             ContextMenuStrip = menu,
             Visible = true
@@ -106,33 +108,21 @@ internal sealed class TrayContext : ApplicationContext
         _ = CheckAsync();
     }
 
-    private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunName = "ArcadePiDisplay";
-    private static string StartupLink => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.Startup), "ArcadePiDisplay.lnk");
-
-    private static bool IsAutostartEnabled()
+    private static Icon LoadIcon(string name)
     {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-        return File.Exists(StartupLink) || key?.GetValue(RunName) is string;
+        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException("Tray-Icon fehlt: " + name);
+        using var loaded = new Icon(stream);
+        return (Icon)loaded.Clone();
     }
 
-    private static void SetAutostart(bool enabled)
+    private void SettingsChanged()
     {
-        using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-        if (!enabled) {
-            key.DeleteValue(RunName, false);
-            if (File.Exists(StartupLink)) File.Delete(StartupLink);
-            return;
-        }
-        var path = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(path) ||
-            !Path.GetFileName(path).Equals("ArcadePiTray.exe", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Autostart erst mit der veröffentlichten ArcadePiTray.exe aktivieren.");
-        key.SetValue(RunName, "\"" + path + "\"");
-        if (File.Exists(StartupLink)) File.Delete(StartupLink);
+        client.UpdateSettings(settings);
+        needsSync = currentGame != null;
+        gestureConfigDirty = true;
+        _ = CheckAsync();
     }
-
     private static void Add(ContextMenuStrip menu, string text, Action action)
     {
         var item = new ToolStripMenuItem(text);
@@ -158,43 +148,56 @@ internal sealed class TrayContext : ApplicationContext
         checking = true;
         try
         {
-            if (currentGame != null && ++ticks % 3 == 0)
-                await client.CommandAsync("heartbeat");
-            var json = await client.StatusAsync();
-            if (gestureConfigDirty)
+            try
             {
-                await client.SetGestureConfigAsync(settings.GestureActions);
-                gestureConfigDirty = false;
+                var json = await client.StatusAsync();
+                using var document = JsonDocument.Parse(json);
+                var title = document.RootElement.GetProperty("game_title");
+                var shown = title.ValueKind == JsonValueKind.String ? title.GetString() : "Standardmedium";
+                statusItem.Text = "Pi verbunden – " + shown;
+                icon.Text = "Arcade Pi Display – Pi verbunden";
+                icon.Icon = connectedIcon;
             }
-            using var document = JsonDocument.Parse(json);
-            var title = document.RootElement.GetProperty("game_title");
-            var shown = title.ValueKind == JsonValueKind.String ? title.GetString() : "Standardmedium";
-            statusItem.Text = "Pi verbunden – " + shown;
-            icon.Text = "Arcade Pi Display – Pi verbunden";
-            if (needsSync && currentGame != null)
+            catch
             {
-                await gameGate.WaitAsync();
-                try
+                statusItem.Text = "Pi nicht erreichbar";
+                icon.Text = "Arcade Pi Display – Pi nicht erreichbar";
+                icon.Icon = disconnectedIcon;
+                if (currentGame != null) needsSync = true;
+                gestureConfigDirty = true;
+                return;
+            }
+
+            try
+            {
+                if (currentGame != null && ++ticks % 3 == 0)
+                    await client.CommandAsync("heartbeat");
+                if (gestureConfigDirty)
                 {
-                    if (needsSync && currentGame != null)
-                    {
-                        await client.GameAsync(currentGame);
-                        needsSync = false;
-                    }
+                    await client.SetGestureConfigAsync(settings.GestureActions);
+                    gestureConfigDirty = false;
                 }
-                finally { gameGate.Release(); }
+                if (needsSync && currentGame != null)
+                {
+                    await gameGate.WaitAsync();
+                    try
+                    {
+                        if (needsSync && currentGame != null)
+                        {
+                            await client.GameAsync(currentGame);
+                            needsSync = false;
+                        }
+                    }
+                    finally { gameGate.Release(); }
+                }
             }
-        }
-        catch
-        {
-            statusItem.Text = "Pi nicht erreichbar";
-            icon.Text = "Arcade Pi Display – Pi nicht erreichbar";
-            if (currentGame != null) needsSync = true;
-            gestureConfigDirty = true;
+            catch (Exception error)
+            {
+                statusItem.Text = "Pi verbunden – Aktion fehlgeschlagen: " + error.Message;
+            }
         }
         finally { checking = false; }
     }
-
     private async Task GestureLoopAsync(CancellationToken cancellation)
     {
         while (!cancellation.IsCancellationRequested)
@@ -282,6 +285,8 @@ internal sealed class TrayContext : ApplicationContext
         stop.Cancel();
         icon.Visible = false;
         icon.Dispose();
+        connectedIcon.Dispose();
+        disconnectedIcon.Dispose();
         dispatcher.Dispose();
         client.Dispose();
         stop.Dispose();
