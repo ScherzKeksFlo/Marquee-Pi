@@ -319,12 +319,15 @@ bool sendRetroArchHotkey(const std::wstring& text) {
     BOOL ok = QueryFullProcessImageNameW(process, 0, path.data(), &n);
     CloseHandle(process);
     if (!ok || lowerW(filename(path.substr(0, n))) != L"retroarch.exe") return false;
-    std::vector<INPUT> inputs;
-    for (BYTE key : keys) { INPUT i{}; i.type = INPUT_KEYBOARD; i.ki.wVk = key; inputs.push_back(i); }
+    std::vector<INPUT> press, release;
+    for (BYTE key : keys) { INPUT i{}; i.type = INPUT_KEYBOARD; i.ki.wVk = key; press.push_back(i); }
     for (auto it = keys.rbegin(); it != keys.rend(); ++it) {
-        INPUT i{}; i.type = INPUT_KEYBOARD; i.ki.wVk = *it; i.ki.dwFlags = KEYEVENTF_KEYUP; inputs.push_back(i);
+        INPUT i{}; i.type = INPUT_KEYBOARD; i.ki.wVk = *it; i.ki.dwFlags = KEYEVENTF_KEYUP; release.push_back(i);
     }
-    return SendInput(UINT(inputs.size()), inputs.data(), sizeof(INPUT)) == inputs.size();
+    const bool pressed = SendInput(UINT(press.size()), press.data(), sizeof(INPUT)) == press.size();
+    if (pressed) Sleep(120); // Keep the keys down long enough for RetroArch to poll them.
+    const bool released = SendInput(UINT(release.size()), release.data(), sizeof(INPUT)) == release.size();
+    return pressed && released;
 }
 HttpResult piRequest(const Settings& s, const std::wstring& method, const std::wstring& path,
                      const std::string& body, const std::wstring& contentType,
