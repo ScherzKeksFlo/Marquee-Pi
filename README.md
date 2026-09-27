@@ -1,4 +1,4 @@
-# Arcade Pi Display
+# Marquee-Pi
 
 Ein Begleitbildschirm für LaunchBox/Big Box auf Windows 11 und einen Raspberry Pi 3 B+ mit 7-Zoll-Touchdisplay (800 × 480).
 
@@ -17,7 +17,7 @@ Ein Begleitbildschirm für LaunchBox/Big Box auf Windows 11 und einen Raspberry 
 
 | Ordner | Zweck |
 | --- | --- |
-| `windows/` | Windows-Begleitprogramm mit Infobereich, Kommunikation und Abschaltsteuerung |
+| `windows/` | Natives C++-Tray-Tool mit Infobereich, Kommunikation und Abschaltsteuerung |
 | `launchbox-plugin/` | LaunchBox/Big-Box-Plugin für Spielstart und Spielende |
 | `pi/` | Vollbildanzeige, Touchbedienung und lokaler Empfänger |
 | `docs/` | Architektur, Protokoll, Installation und Tests |

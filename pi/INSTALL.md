@@ -1,6 +1,6 @@
 # Installation auf Raspberry Pi OS
 
-Diese Anleitung beschreibt eine Neuinstallation von Arcade Pi Display auf Raspberry Pi OS Lite (32 Bit, derzeit Debian 13 „Trixie“). Getestet am 27. September 2026 auf einem Raspberry Pi 3 B+ mit 800 × 480 DSI-Touchdisplay und einer 8-GB-microSD-Karte. Bei späteren OS-Versionen Paketnamen und Polkit-Regeln erneut prüfen.
+Diese Anleitung beschreibt eine Neuinstallation von Marquee-Pi auf Raspberry Pi OS Lite (32 Bit, derzeit Debian 13 „Trixie“). Getestet am 27. September 2026 auf einem Raspberry Pi 3 B+ mit 800 × 480 DSI-Touchdisplay und einer 8-GB-microSD-Karte. Bei späteren OS-Versionen Paketnamen und Polkit-Regeln erneut prüfen.
 
 ## Startmedium und Betriebssystem
 

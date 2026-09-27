@@ -9,7 +9,7 @@ using System.Threading;
 using Unbroken.LaunchBox.Plugins;
 using Unbroken.LaunchBox.Plugins.Data;
 
-namespace ArcadePiLaunchBox
+namespace MarqueePiLaunchBox
 {
     public sealed class GameEventsPlugin : IGameLaunchingPlugin
     {

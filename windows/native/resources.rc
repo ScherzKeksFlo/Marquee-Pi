@@ -1,0 +1,30 @@
+1 ICON "../Resources/connected.ico"
+101 ICON "../Resources/connected.ico"
+102 ICON "../Resources/disconnected.ico"
+
+1 VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+FILEFLAGSMASK 0x3fL
+FILEOS 0x40004L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040704b0"
+    BEGIN
+      VALUE "CompanyName", "Keks"
+      VALUE "FileDescription", "Marquee-Pi Windows tray tool"
+      VALUE "FileVersion", "1.0.0"
+      VALUE "InternalName", "Marquee-Pi"
+      VALUE "OriginalFilename", "Marquee-Pi.exe"
+      VALUE "ProductName", "Marquee-Pi"
+      VALUE "ProductVersion", "1.0.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0407, 1200
+  END
+END

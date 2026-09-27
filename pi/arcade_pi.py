@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local display and authenticated control API for Arcade Pi Display."""
+"""Local display and authenticated control API for Marquee-Pi."""
 
 from __future__ import annotations
 
@@ -445,7 +445,7 @@ def main() -> None:
     state = DisplayState(data_dir, int(config.get("game_timeout_seconds", 60)))
     server = Server((config.get("bind", "0.0.0.0"), int(config.get("port", 8765))), state, token,
                     config.get("allowed_client_ips", []), bool(config.get("power_commands_enabled", False)))
-    print("Arcade Pi Display listening on %s:%s" % server.server_address, flush=True)
+    print("Marquee-Pi listening on %s:%s" % server.server_address, flush=True)
     server.serve_forever()
 
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Arcade Pi Display API
+Description=Marquee-Pi API
 After=network.target
 
 [Service]

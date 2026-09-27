@@ -1,27 +1,27 @@
-# Windows-Begleitprogramm
+# Marquee-Pi für Windows
 
-`ArcadePiTray` ist eine Windows-Forms-App mit Symbol im Infobereich der Taskleiste. Sie zeigt den Pi-Status, verwaltet eigene Standardmedien und bietet Anzeige neu laden, Standardbild anzeigen, Pi-Neustart und Pi-Shutdown. Die App empfängt LaunchBox-Spielereignisse über eine lokale Named Pipe und sendet Grafiken an den Pi. Ein realer Big-Box-Spielstart und die Rückkehr zur Standardanimation nach Spielende wurden auf dem Zielsystem geprüft.
+Das Windows-Tray-Tool ist eine native C++20-Anwendung für Windows 11. Es empfängt Spielereignisse des LaunchBox-Plugins per Named Pipe, sendet Medien an die Pi-API und zeigt Verbindung, Einstellungen und Standardmedien im Infobereich an. Für die EXE ist keine .NET-Laufzeit erforderlich. Das LaunchBox-Plugin bleibt eine .NET-Framework-DLL, da es die LaunchBox-Plugin-API verwendet.
 
-## Bauen und starten
+## Build
+
+Benötigt werden MinGW-w64 mit `g++` und `windres` (getestet mit GCC 13.1), PowerShell und für die Plugin-DLL das .NET-SDK sowie eine lokale LaunchBox-Installation. Die proprietäre LaunchBox-API-DLL wird nur beim Build referenziert und nicht mitgeliefert.
 
 ```powershell
-dotnet build windows/ArcadePiTray.csproj -c Release
-dotnet run --project windows/ArcadePiTray.csproj
+./windows/native/build.ps1 -LaunchBoxRoot "C:\LaunchBox"
 ```
 
-Zum Bauen wird das .NET-10-SDK benötigt. Ein selbstständiges Windows-x64-Paket lässt sich mit `dotnet publish windows/ArcadePiTray.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true` erstellen.
+Das Skript baut die native EXE, führt JSON-/INI-/Hotkey-Tests aus und erstellt `dist/Marquee-Pi/Marquee-Pi-portable-win-x64.zip`. Das ZIP enthält EXE, LaunchBox-Plugin-DLL, `portable.flag`, Anleitung und Lizenz. Es enthält keine Tokens oder persönlichen Medien. Die EXE verlinkt C++- und GCC-Laufzeit statisch und importiert nur Windows-System-DLLs.
 
-Das selbstständige Paket enthält die .NET-Laufzeit und Windows Forms; auf dem Ziel-PC muss deshalb keine passende Laufzeit installiert sein. Das getestete .NET-7-Testpaket war ohne Kompression etwa 151 MB groß, mit `EnableCompressionInSingleFile=true` etwa 68 MB. Die Kompression kann den Programmstart etwas verlangsamen. Das komplette Publish-Verzeichnis weitergeben: Zur EXE gehören noch einige native DLLs; die PDB-Datei ist nur für Debugging nötig. Wer die zum Target Framework passende Windows-Desktop-Laufzeit separat installiert hat, kann mit `--self-contained false` ein kleineres, laufzeitabhängiges Paket veröffentlichen.
-Nach dem Start im Infobereich **Einstellungen…** öffnen. Unter **Verbindung** die Pi-Adresse (`http://PI-IP:8765`) und den API-Token eintragen. **Hilfe: Token erstellen** zeigt die Schritte am Pi direkt im Tool. Unter **Wischgesten** werden die vier Richtungen sowie die RetroArch-Tastenkombination eingestellt. Zur Auswahl stehen Marquee, Box Art, LaunchBox-Clear-Logo, Steuerungsbelegung, Standardmedium, RetroArch-Menü und keine Aktion. Das Tastaturkürzel (z. B. `F1` oder `Ctrl+Shift+F1`) geht nur an ein aktives RetroArch-Fenster. Unter **Allgemein** lässt sich der Autostart für das angemeldete Konto einstellen und die Standardmedienverwaltung öffnen.
+## Installation und Konfiguration
 
-Alle Konfigurationswerte liegen pro Windows-Benutzer in `%LOCALAPPDATA%\ArcadePiDisplay\settings.ini`. Über **INI-Datei öffnen** lässt sie sich direkt bearbeiten; danach **Einstellungen neu laden** wählen oder die App neu starten. Die INI enthält den Token im Klartext und gehört nicht ins Git-Repository. Eine vorhandene `settings.json` wird beim ersten Start einmalig übernommen und als Rückfallkopie belassen. Der Autostart wird zusätzlich im Windows-Benutzerkonto eingerichtet; dafür muss die veröffentlichte `ArcadePiTray.exe` gestartet sein.
+Für die portable Version das ZIP entpacken und `Marquee-Pi.exe` starten. Die Datei `portable.flag` neben der EXE bewirkt, dass `Data/settings.ini` und `Data/media/` im selben Ordner liegen. Ohne diese Datei werden die Daten unter `%LOCALAPPDATA%\Marquee-Pi\` abgelegt. Beim ersten Start ohne portablen Modus werden die alten Werte und Medien aus `%LOCALAPPDATA%\ArcadePiDisplay\` übernommen. Der alte Ordner bleibt als Rückfall erhalten.
 
-Das Tray-Symbol verwendet die mitgelieferten Icons: verbunden nach erfolgreicher Pi-Abfrage, getrennt beim Start und wenn der Pi nicht erreichbar ist. Die Icons sind in die EXE eingebettet. Die 16- bis 48-Pixel-Stufen haben einen vergrößerten Statuspunkt; die ICO-Dateien lassen sich aus den PNG-Quellen mit `windows/Resources/Generate-TrayIcon.ps1` reproduzieren.
-`Standardmedien verwalten…` importiert eigene Dateien in eine lokale Bibliothek. `Auf Pi aktivieren` überträgt die ausgewählte Datei. Der Pi speichert sie dauerhaft und verwendet sie beim nächsten eigenen Start ohne Windows-Verbindung. Die Vorschau öffnet derzeit die unter Windows zugeordnete Medien-App.
+Die Plugin-DLL `MarqueePiLaunchBox.dll` gehört nach `LaunchBox\Plugins\Marquee-Pi\`. LaunchBox/Big Box danach neu starten. Die bestehende Named-Pipe-Kennung bleibt für die Kompatibilität mit älteren Plugin-Versionen erhalten.
 
-## Aktueller Stand
+Im Tray-Menü **Einstellungen…** lassen sich Pi-Adresse, API-Token, vier Wischgesten, RetroArch-Tastenkombination und Autostart einstellen. **Hilfe: Token erstellen** zeigt die Schritte am Pi. **INI-Datei öffnen** und **Einstellungen neu laden** erlauben direkte Dateibearbeitung. Der Token liegt im Klartext in der INI und gehört nicht ins Git-Repository.
 
-- Windows-App und Pi-API sind lokal gebaut bzw. getestet.
-- Das LaunchBox-Plugin wird gegen die DLL aus der eigenen LaunchBox-Installation gebaut; sie wird nicht mitgeliefert. Auf dem Arcade-PC liegt ein selbstständiges .NET-7-Testpaket (vor dem .NET-10-Upgrade installiert) unter `C:\ArcadePiDisplay` für den Benutzer `flo`.
-- Die automatische Pi-Abschaltung ist implementiert, aber noch nicht am Zielrechner geprüft. Beim bestätigten Windows-Sitzungsende liest die App das aktuelle User32-Ereignis 1074 und sendet den Pi-Shutdown nur bei eindeutigem Ausschalt-Typ. Diagnosemeldungen stehen unter `%LOCALAPPDATA%\ArcadePiDisplay\shutdown.log`.
-- `ArcadePiTray.exe --pi-shutdown` bleibt als manueller Kommandoaufruf verfügbar. Ein Windows-Neustart löst über die automatische Erkennung keinen Pi-Shutdown aus.
+**Standardmedien verwalten…** importiert JPG, PNG, GIF, WebP und MP4 bis 20 MB. **Auf Pi aktivieren** überträgt das Medium; der Pi speichert es für den nächsten eigenen Start. Das Tray bietet außerdem Standardlogo, Neuladen, Pi-Neustart und Pi-Shutdown. Beim vollständigen Windows-Shutdown wird der Pi nur nach einem passenden Windows-Ereignis heruntergefahren; ein Windows-Neustart lässt ihn eingeschaltet. Diagnosemeldungen stehen in `shutdown.log` im jeweiligen Datenordner. `Marquee-Pi.exe --pi-shutdown` sendet den Befehl manuell.
+
+## Prüfung
+
+Die native EXE wurde mit GCC 13.1 gebaut. JSON-/INI-/Hotkey-Tests, Fenster-Smoke-Test und eine reale Spielstart-/Spielende-Nachricht über die Named Pipe zur Pi-API waren erfolgreich. Die Windows-Abschalterkennung ist implementiert; der echte Shutdown des Arcade-PCs ist noch nicht getestet.

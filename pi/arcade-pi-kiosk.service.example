@@ -1,5 +1,5 @@
 [Unit]
-Description=Arcade Pi Display kiosk
+Description=Marquee-Pi kiosk
 After=arcade-pi-display.service
 Requires=arcade-pi-display.service
 
