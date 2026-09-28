@@ -33,7 +33,7 @@ Das portable Windows-Paket enthält EXE, Plugin-DLL, Anleitung und Lizenz. IP-Ad
 
 Der automatische Pi-Shutdown wurde sowohl beim Ausschalten über Big Box als auch über das normale Windows-Startmenü praktisch geprüft. Pi-Neustart und Pi-Shutdown über das Tray-Menü sind getrennte Funktionen.
 
-Bekannte Einschränkung des ersten Zielsystems: Nach vollständiger Trennung der Stromversorgung wurde das 7-Zoll-DSI-Display beim ersten Pi-Start wiederholt nicht erkannt. Die dokumentierte Wiederherstellung aktiviert es erneut; eine dauerhafte Lösung für den Kaltstart steht noch aus. Details stehen in der [Pi-Installationsanleitung](pi/INSTALL.md).
+Beim ersten Zielsystem benötigte die über einen eigenen USB-Hub versorgte Displayplatine nach einem Kaltstart zusätzliche Zeit. `bootcode_delay=5` wurde mit drei aufeinanderfolgenden Kaltstarts erfolgreich geprüft; das Testskript bietet zusätzlich einen Warmstart als Rückfalllösung. Details stehen in der [Pi-Installationsanleitung](pi/INSTALL.md).
 
 ## Hardware des ersten Zielsystems
 

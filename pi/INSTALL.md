@@ -89,36 +89,34 @@ sudo marquee-display-test reset
 ```
 
 `status` zeigt DSI-, Touch-, X11- und Dienststatus. `blink` schaltet ein erkanntes Display drei Sekunden aus und wieder ein. `reset` setzt einen vorhandenen DSI-Ausgang und den Kiosk zurück. Fehlt DSI vollständig, führt `reset` einmalig einen Warmstart des Pi aus; die Displaystromversorgung muss dabei eingeschaltet bleiben.
+
 ## Schwarzes DSI-Display auf dem Pi 3 B+
 
-Zuerst prüfen, ob der Bildschirm überhaupt erkannt wurde:
+Fehlt nach einem Kaltstart `card0-DSI-1` und erscheint stattdessen nur `Composite-1`, war die Displayplatine bei der frühen Firmwareerkennung möglicherweise noch nicht bereit. Auf dem getesteten Pi wurde das 7-Zoll-Display über einen separat versorgten USB-Hub gespeist. Ein unveränderter FKMS-Warmstart erkannte das Display zuverlässig.
 
-```sh
-ls /sys/class/drm/
-ls /dev/input/
-sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr --current
-```
-
-Fehlt `card0-DSI-1` und erscheint stattdessen nur `Composite-1`, wurde das Display beim Booten nicht automatisch erkannt. Auf dem Testgerät trat dies auch nach einem vollständigen Stromzyklus auf. Die feste Konfiguration für das originale Raspberry-Pi-7-Zoll-Touchdisplay stellte DSI und Touch wieder her. Vorher `/boot/firmware/config.txt` sichern und darin diese Werte setzen:
+Als dauerhafte Lösung die vorhandene `/boot/firmware/config.txt` sichern und `bootcode_delay=5` direkt in diese Datei eintragen:
 
 ```ini
-display_auto_detect=0
-dtoverlay=vc4-kms-v3d
-dtoverlay=vc4-kms-dsi-7inch
-disable_fw_kms_setup=1
-```
-
-Vorhandene widersprechende Zeilen ersetzen, nicht doppelt eintragen. Nach `sudo reboot` müssen `card0-DSI-1`, ein Touch-Eingabegerät und `DSI-1 connected` in `xrandr` erscheinen. Bleiben sie aus, Stromversorgung und DSI-Flachbandkabel bei vollständig getrennter Stromversorgung prüfen. Die feste Overlay-Zeile gilt für das originale 800 × 480 Touch Display; bei anderen Panels das passende Overlay verwenden.
-
-Ein anderes Fehlerbild trat auf demselben Pi 3 B+ mit Trixie und Kernel 6.18 auf: Das Display wurde als `DSI-1 connected` erkannt und zeigte kurz den Firmware-Startbildschirm, blieb danach aber beleuchtet und schwarz. In diesem Fall funktionierte nach Wiederherstellung der gesicherten Bootdatei der mitgelieferte FKMS-Treiber:
-
-```ini
-# /boot/firmware/config.txt
+bootcode_delay=5
+display_auto_detect=1
 dtoverlay=vc4-fkms-v3d
 #disable_fw_kms_setup=1
 ```
 
-Die vorhandene Zeile `dtoverlay=vc4-kms-v3d` ersetzen und `disable_fw_kms_setup=1` auskommentieren; die Datei vorher sichern. Nach einem Neustart muss `xrandr` `DSI-1 connected` zeigen. FKMS kann zusätzlich `Composite-1` aktivieren; `start-kiosk.sh` schaltet diesen Ausgang automatisch ab, wenn DSI angeschlossen ist. Auf dem Testgerät zeigte die feste KMS-Konfiguration nach dem Erkennungsfehler zwar wieder DSI und Touch, das Bild blieb aber schwarz. Nach Rückkehr zur gesicherten FKMS-Konfiguration und einem weiteren Neustart lief die Standardanimation wieder. Ein erneuter Kaltstart reproduzierte den Erkennungsfehler: Mit FKMS fehlten DSI und Touch zunächst wieder. KMS mit festem Overlay erkannte beide, zeigte auf dem realen Display aber selbst auf der Textkonsole kein Bild. Nach Rückkehr zu FKMS per Warmstart war DSI wieder aktiv. Für dieses Gerät ist der Kaltstart damit noch nicht zuverlässig gelöst. Diesen Workaround nur bei dem beschriebenen Fehler einsetzen, da andere Pi-Modelle und Displays mit KMS funktionieren können.
+`bootcode_delay` gibt der Displayplatine vor der Erkennung fünf Sekunden zusätzliche Startzeit. Diese Konfiguration wurde auf dem Zielsystem mit drei aufeinanderfolgenden Kaltstarts nach jeweils 10 bis 20 Sekunden vollständiger Stromtrennung erfolgreich geprüft.
+
+Status prüfen mit:
+
+```sh
+ls /sys/class/drm/
+ls /dev/input/
+marquee-display-test status
+sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr --current
+```
+
+Im Fehlerfall kann `sudo marquee-display-test reset` als Rückfalllösung verwendet werden. Fehlt DSI vollständig, startet das Skript den Pi einmal warm neu, während die Displayplatine am eingeschalteten Hub versorgt bleibt.
+
+Ein Wechsel auf vollständiges KMS war auf dem Testgerät keine Lösung. Die feste Konfiguration mit `vc4-kms-v3d`, `vc4-kms-dsi-7inch`, `ignore_lcd=1` und `disable_touchscreen=1` erkannte zwar DSI und die Backlight-Schnittstelle, das reale Display blieb jedoch schwarz. Kernelmeldungen zeigten I/O-Fehler beim Aktivieren der Hintergrundbeleuchtung und beim Touchcontroller. FKMS mit `bootcode_delay=5` bleibt daher die getestete Konfiguration für dieses Gerät. Andere Pi-Modelle und Displayvarianten können KMS benötigen.
 
 ## Standardvideo auf einem Pi 3 B+
 
