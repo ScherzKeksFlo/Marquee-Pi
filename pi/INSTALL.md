@@ -180,8 +180,10 @@ Trixie verwendet JavaScript-Regeln unter `/etc/polkit-1/rules.d`; die alte Buste
 ```sh
 sudo install -o root -g root -m 644 arcade-pi-display.rules.example /etc/polkit-1/rules.d/50-arcade-pi-display.rules
 PID=$(systemctl show -p MainPID --value arcade-pi-display)
-sudo -u arcadepi pkcheck --action-id org.freedesktop.login1.reboot --process "$PID"
-sudo -u arcadepi pkcheck --action-id org.freedesktop.login1.power-off --process "$PID"
+START_TIME=$(python3 -c 'import sys; print(open(sys.argv[1]).read().rsplit(")", 1)[1].split()[19])' "/proc/$PID/stat")
+PROCESS="$PID,$START_TIME,$(id -u arcadepi)"
+sudo -u arcadepi pkcheck --action-id org.freedesktop.login1.reboot --process "$PROCESS"
+sudo -u arcadepi pkcheck --action-id org.freedesktop.login1.power-off --process "$PROCESS"
 ```
 
 Die Prüfung muss für den Dienstbenutzer erfolgen; beide `pkcheck`-Aufrufe müssen erfolgreich sein. Erst danach `power_commands_enabled` in `config.json` auf `true` setzen und den API-Dienst neu starten. Den API-Neustart zuerst prüfen. Der Shutdown-Test kommt zuletzt, weil der Pi danach erst durch einen neuen Stromzyklus wieder startet. `NoNewPrivileges=true` in der Dienstdatei bleibt aktiv.
