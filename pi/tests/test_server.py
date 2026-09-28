@@ -9,7 +9,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from arcade_pi import DisplayState, Server
+from arcade_pi import DisplayState, Handler, Server, process_identity
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lZkAAAAASUVORK5CYII="
@@ -18,6 +18,14 @@ MP4 = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 24
 
 
 class StateTests(unittest.TestCase):
+    def test_process_identity_includes_start_time_and_uid(self):
+        fake_stat = "123 (marquee pi) S " + " ".join(str(index) for index in range(4, 40))
+        with patch("arcade_pi.Path.read_text", return_value=fake_stat), \
+             patch("arcade_pi.os.getpid", return_value=123), \
+             patch("arcade_pi.os.getuid", return_value=1000, create=True):
+            self.assertEqual(process_identity(), "123,22,1000")
+        self.assertEqual(Handler.timeout, 15)
+
     def test_boot_and_shutdown_media_survive_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             data_dir = Path(directory)
@@ -214,7 +222,7 @@ class ApiTests(unittest.TestCase):
                 with urlopen(touch, timeout=3) as response:
                     self.assertTrue(json.load(response)["queued"])
                 event_request = Request(
-                    base + "/v1/gesture-events?after=0",
+                    base + "/v1/gesture-events?unused=yes&after=0",
                     headers={"X-Arcade-Token": "a" * 32},
                 )
                 with urlopen(event_request, timeout=3) as response:

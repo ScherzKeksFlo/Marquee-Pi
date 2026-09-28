@@ -17,7 +17,7 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 APP_VERSION = "0.1.0"
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
@@ -90,6 +90,15 @@ def unlink_if_exists(path: Path) -> None:
         path.unlink()
     except FileNotFoundError:
         pass
+
+
+def process_identity() -> str:
+    """Return the pid,start-time,uid tuple expected by recent pkcheck versions."""
+    stat = Path("/proc/self/stat").read_text(encoding="ascii")
+    fields = stat.rsplit(")", 1)[1].split()
+    if len(fields) <= 19:
+        raise OSError("Process start time unavailable")
+    return f"{os.getpid()},{fields[19]},{os.getuid()}"
 
 
 class DisplayState:
@@ -341,6 +350,7 @@ class Server(ThreadingHTTPServer):
 
 class Handler(BaseHTTPRequestHandler):
     server: Server
+    timeout = 15
 
     def _local(self) -> bool:
         return self.client_address[0] in ("127.0.0.1", "::1")
@@ -454,8 +464,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(401, {"error": "Unauthorized"})
                 return
             try:
-                cursor = max(0, int(urlsplit(self.path).query.removeprefix("after=")))
-            except ValueError:
+                values = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                if len(values.get("after", [])) != 1:
+                    raise ValueError
+                cursor = max(0, int(values["after"][0]))
+            except (ValueError, TypeError):
                 self._json(400, {"error": "Invalid cursor"})
                 return
             self._json(200, self.server.state.events_after(cursor))
@@ -573,7 +586,7 @@ class Handler(BaseHTTPRequestHandler):
                 action = "reboot" if path.endswith("reboot") else "poweroff"
                 policy = "org.freedesktop.login1.reboot" if action == "reboot" else "org.freedesktop.login1.power-off"
                 authorization = subprocess.run(
-                    ["pkcheck", "--action-id", policy, "--process", str(os.getpid())],
+                    ["pkcheck", "--action-id", policy, "--process", process_identity()],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
                 if authorization.returncode != 0:
                     self._json(503, {"error": "Power authorization unavailable"})
