@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pi:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test Pi server
+        run: python3 -m unittest discover -s tests
+      - name: Test gestures
+        run: node --test tests/gesture.test.js
+
+  windows-native:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+      - name: Build and run native tests
+        shell: msys2 {0}
+        run: |
+          mkdir -p build/native-tests
+          g++ -std=c++20 -O2 -Wall -Wextra -static -static-libgcc -static-libstdc++ \
+            windows/native/core.cpp windows/native/tests.cpp \
+            -o build/native-tests/Marquee-Pi-tests.exe \
+            -lwinhttp -lshell32 -ladvapi32 -lcrypt32 -luser32 -lole32 -luuid -lws2_32 -lwindowscodecs
+          touch build/native-tests/portable.flag
+          cd build/native-tests
+          ./Marquee-Pi-tests.exe
