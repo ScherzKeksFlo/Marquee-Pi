@@ -177,29 +177,34 @@ std::string scaledArtwork(const std::wstring& path, const std::string& ext, cons
     const UINT scaledHeight = std::max(1u, UINT(std::lround(height * scale)));
     ComPtr<IWICBitmapScaler> scaler;
     if (FAILED(factory->CreateBitmapScaler(scaler.out())) ||
-        FAILED(scaler->Initialize(source.ptr, scaledWidth, scaledHeight, WICBitmapInterpolationModeFant))) return original;
+        FAILED(scaler->Initialize(source.ptr, scaledWidth, scaledHeight, WICBitmapInterpolationModeFant)))
+        throw std::runtime_error("Artwork scaling failed");
     ComPtr<IStream> stream;
-    if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, stream.out()))) return original;
+    if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, stream.out()))) throw std::runtime_error("Artwork stream failed");
     ComPtr<IWICBitmapEncoder> encoder;
     const CLSID encoderId = ext == ".png" ? CLSID_WICPngEncoder : CLSID_WICJpegEncoder;
     if (FAILED(factory->CreateEncoder(encoderId, nullptr, encoder.out())) ||
-        FAILED(encoder->Initialize(stream.ptr, WICBitmapEncoderNoCache))) return original;
+        FAILED(encoder->Initialize(stream.ptr, WICBitmapEncoderNoCache)))
+        throw std::runtime_error("Artwork encoder failed");
     ComPtr<IWICBitmapFrameEncode> frame;
     if (FAILED(encoder->CreateNewFrame(frame.out(), nullptr)) || FAILED(frame->Initialize(nullptr)) ||
-        FAILED(frame->SetSize(scaledWidth, scaledHeight))) return original;
+        FAILED(frame->SetSize(scaledWidth, scaledHeight))) throw std::runtime_error("Artwork frame failed");
     WICPixelFormatGUID format = ext == ".png" ? GUID_WICPixelFormat32bppBGRA : GUID_WICPixelFormat24bppBGR;
-    if (FAILED(frame->SetPixelFormat(&format))) return original;
+    if (FAILED(frame->SetPixelFormat(&format))) throw std::runtime_error("Artwork pixel format failed");
     ComPtr<IWICFormatConverter> converter;
     if (FAILED(factory->CreateFormatConverter(converter.out())) ||
         FAILED(converter->Initialize(scaler.ptr, format, WICBitmapDitherTypeNone, nullptr, 0,
                                      WICBitmapPaletteTypeCustom)) ||
         FAILED(frame->WriteSource(converter.ptr, nullptr)) || FAILED(frame->Commit()) || FAILED(encoder->Commit()))
-        return original;
+        throw std::runtime_error("Artwork encoding failed");
     HGLOBAL memory = nullptr;
-    if (FAILED(GetHGlobalFromStream(stream.ptr, &memory)) || !memory) return original;
-    const SIZE_T size = GlobalSize(memory);
+    STATSTG stats{};
+    if (FAILED(stream->Stat(&stats, STATFLAG_NONAME)) || stats.cbSize.HighPart || !stats.cbSize.LowPart)
+        throw std::runtime_error("Artwork size unavailable");
+    if (FAILED(GetHGlobalFromStream(stream.ptr, &memory)) || !memory) throw std::runtime_error("Artwork memory unavailable");
+    const SIZE_T size = stats.cbSize.LowPart;
     const void* bytes = GlobalLock(memory);
-    if (!bytes || !size) return original;
+    if (!bytes) throw std::runtime_error("Artwork memory unavailable");
     std::string result(static_cast<const char*>(bytes), static_cast<const char*>(bytes) + size);
     GlobalUnlock(memory);
     return result;
@@ -213,7 +218,7 @@ mini::Json artwork(const std::wstring& path, size_t& budget) {
         if (length > 20 * 1024 * 1024 || length > budget) return {};
         std::string bytes = readFile(path);
         if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") bytes = scaledArtwork(path, ext, bytes);
-        if (bytes.size() > budget) return {};
+        if (bytes.size() > 20 * 1024 * 1024 || bytes.size() > budget) return {};
         budget -= bytes.size();
         mini::Json item = mini::Json::object();
         item["extension"] = mini::Json::str(ext);
