@@ -91,14 +91,24 @@ Das Windows-Tool lädt den Boot-Splash später über **Medien verwalten… > Als
 sudo install -o arcadepi -g arcadepi -m 640 boot.png /var/lib/arcade-pi-display/boot-splash
 ```
 
-Anschließend den normalen Konsolentext ausblenden. Das Skript sichert die ursprüngliche Kernel-Befehlszeile einmalig als `/boot/firmware/cmdline.txt.marquee-pi-before-quiet-boot`, ergänzt die leisen Startoptionen und deaktiviert den normalen Getty auf tty1. `console=tty1` bleibt bewusst erhalten, damit ein früher Boot- oder Dateisystemfehler weiterhin sichtbar bleibt:
+Anschließend den normalen Konsolentext ausblenden. Das Skript sichert die ursprüngliche Kernel-Befehlszeile einmalig als `/boot/firmware/cmdline.txt.marquee-pi-before-quiet-boot`, prüft vor dem atomaren Ersetzen den erforderlichen `root=`-Eintrag, ergänzt die leisen Startoptionen und deaktiviert den normalen Getty auf tty1. `console=tty1` bleibt bewusst erhalten, damit Kernel-, Boot- und Dateisystemfehler weiterhin sichtbar bleiben; nach einem normalen Start erscheint dort wegen des deaktivierten Gettys kein Login-Prompt:
 
 ```sh
 sudo marquee-pi-configure-quiet-boot
 sudo reboot
 ```
 
-Die serielle Konsole und tty1 bleiben für die Diagnose erhalten. Ganz frühe Firmwareausgaben vor dem Linux-Framebuffer sowie tatsächliche Bootfehler können deshalb sichtbar sein. Sobald `/dev/fb0` verfügbar ist, zeigt `marquee-pi-boot-splash.service` das statische Bild; X11 übernimmt danach mit dem Standardmedium.
+Die serielle Konsole und tty1 bleiben für frühe Diagnosemeldungen erhalten. Ganz frühe Firmwareausgaben vor dem Linux-Framebuffer sowie tatsächliche Bootfehler können deshalb sichtbar sein. Sobald `/dev/fb0` verfügbar ist, zeigt `marquee-pi-boot-splash.service` das statische Bild; X11 übernimmt danach mit dem Standardmedium.
+
+Quiet Boot rückgängig machen:
+
+```sh
+sudo cp -p /boot/firmware/cmdline.txt.marquee-pi-before-quiet-boot /boot/firmware/cmdline.txt
+sudo systemctl enable getty@tty1.service
+sudo reboot
+```
+
+Wenn der Pi nicht mehr startet, die FAT-Bootpartition mit einem Kartenleser unter Windows öffnen und `cmdline.txt.marquee-pi-before-quiet-boot` als `cmdline.txt` zurückkopieren. Die Datei muss eine einzige Zeile bleiben.
 
 ## Medien über das Windows-Tool einrichten
 
@@ -108,7 +118,7 @@ Im Windows-Tray **Medien verwalten…** öffnen, eine Datei hinzufügen und eine
 - **Als Boot-Splash:** PNG oder JPEG; erscheint ab dem nächsten Pi-Start vor dem Kiosk.
 - **Als Shutdown-Medium:** JPG, PNG, GIF, WebP oder H.264-MP4; erscheint vor dem Ausschalten.
 
-Ein Shutdown-Video spielt einmal. Der Pi wartet auf die mit `ffprobe` ermittelte Dauer plus eine Sekunde, mindestens vier und höchstens 30 Sekunden. Wird der Pi direkt per `systemctl poweroff` heruntergefahren, aktiviert `marquee-pi-shutdown-animation.service` die lokale Anzeige, bevor API und Kiosk beendet werden. Beim Shutdown aus dem Windows-Tool oder während des Windows-Shutdowns wechselt die API bereits vor dem eigentlichen Poweroff auf das Medium.
+Ein Shutdown-Video spielt einmal. Der Pi ermittelt die Dauer bereits beim Upload und speichert sie im Medienmanifest. Beim Ausschalten wartet er diese Dauer plus eine Sekunde, mindestens vier und höchstens 30 Sekunden. Wird der Pi direkt per `systemctl poweroff` heruntergefahren, aktiviert `marquee-pi-shutdown-animation.service` die lokale Anzeige, bevor API und Kiosk beendet werden. Bei einem Neustart wird die Shutdown-Animation übersprungen. Beim Shutdown aus dem Windows-Tool oder während des Windows-Shutdowns wechselt die API bereits vor dem eigentlichen Poweroff auf das Medium.
 
 ## Display testen und zurücksetzen
 

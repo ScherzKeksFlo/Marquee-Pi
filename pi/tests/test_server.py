@@ -45,6 +45,7 @@ class StateTests(unittest.TestCase):
             self.assertEqual(manifest, {"name": name, "duration": 8.5})
             restored = DisplayState(data_dir, 60)
             self.assertEqual(restored.shutdown_delay(), 9.5)
+            self.assertEqual(restored.describe()["shutdown_delay"], 9.5)
 
             manifest_path.write_text(json.dumps({"name": name}), encoding="utf-8")
             legacy = DisplayState(data_dir, 60)

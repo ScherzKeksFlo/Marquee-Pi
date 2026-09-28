@@ -1,8 +1,10 @@
 [Unit]
 Description=Marquee-Pi boot splash
-After=local-fs.target systemd-udev-settle.service
+Wants=dev-fb0.device
+After=local-fs.target dev-fb0.device
 Before=arcade-pi-kiosk.service
 ConditionPathExists=/var/lib/arcade-pi-display/boot-splash
+ConditionPathExists=/dev/fb0
 
 [Service]
 Type=simple
@@ -13,6 +15,10 @@ StandardError=journal
 TTYPath=/dev/tty1
 TTYReset=yes
 Restart=no
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

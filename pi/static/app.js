@@ -91,6 +91,7 @@ stage.addEventListener("pointermove", (event) => {
 });
 stage.addEventListener("pointerup", (event) => {
   const kind = recognizer.up(event.pointerId, event.clientX, event.clientY, performance.now());
+  if (currentState?.shutting_down) return;
   if (kind === "tap" && currentState?.game_title && currentState.has_controls) {
     view = view === "marquee" ? "controls" : "marquee";
     render();

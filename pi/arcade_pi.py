@@ -191,6 +191,7 @@ class DisplayState:
                 "boot_splash_configured": self.boot_splash_file.is_file(),
                 "shutdown_name": self.shutdown_file.name if self.shutdown_file else None,
                 "shutdown_video": bool(self.shutdown_file and self.shutdown_file.suffix.lower() == ".mp4"),
+                "shutdown_delay": self.shutdown_delay(),
                 "shutting_down": self.shutting_down,
             }
 

@@ -36,8 +36,13 @@ tokens.extend([
     "quiet", "splash", "loglevel=3", "logo.nologo", "vt.global_cursor_default=0",
     "systemd.show_status=false", "rd.systemd.show_status=false",
 ])
+if not tokens or not any(token.startswith("root=") and len(token) > 5 for token in tokens):
+    raise SystemExit("Kernel-Befehlszeile ist leer oder enthält keinen root=-Eintrag; keine Änderung geschrieben.")
 pending = path.with_name(path.name + ".marquee-pi-pending")
-pending.write_text(" ".join(tokens) + "\n", encoding="utf-8")
+with pending.open("w", encoding="utf-8") as stream:
+    stream.write(" ".join(tokens) + "\n")
+    stream.flush()
+    os.fsync(stream.fileno())
 os.replace(pending, path)
 PY
 
