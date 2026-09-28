@@ -77,6 +77,18 @@ sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xset q
 sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr --current
 ```
 
+## Display testen und zurücksetzen
+
+Das Hilfsskript `marquee-display-test.sh` kann als `/usr/local/sbin/marquee-display-test` installiert werden. Es benötigt für `blink` und `reset` Root-Rechte:
+
+```sh
+sudo install -o root -g root -m 755 marquee-display-test.sh /usr/local/sbin/marquee-display-test
+marquee-display-test status
+sudo marquee-display-test blink
+sudo marquee-display-test reset
+```
+
+`status` zeigt DSI-, Touch-, X11- und Dienststatus. `blink` schaltet ein erkanntes Display drei Sekunden aus und wieder ein. `reset` setzt einen vorhandenen DSI-Ausgang und den Kiosk zurück. Fehlt DSI vollständig, führt `reset` einmalig einen Warmstart des Pi aus; die Displaystromversorgung muss dabei eingeschaltet bleiben.
 ## Schwarzes DSI-Display auf dem Pi 3 B+
 
 Zuerst prüfen, ob der Bildschirm überhaupt erkannt wurde:
