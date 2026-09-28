@@ -9,7 +9,6 @@ import binascii
 import hmac
 import json
 import math
-import mimetypes
 import os
 from pathlib import Path
 import shutil
@@ -35,6 +34,13 @@ ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 GESTURES = ("swipe-down", "swipe-up", "swipe-right", "swipe-left")
 GESTURE_ACTIONS = ("none", "marquee", "box_art", "logo", "controls", "default", "retroarch_menu")
+STATIC_MIME = {
+    "index.html": "text/html; charset=utf-8",
+    "app.js": "text/javascript; charset=utf-8",
+    "gesture.js": "text/javascript; charset=utf-8",
+    "fallback.svg": "image/svg+xml",
+}
+MEDIA_CACHE = "public, max-age=31536000, immutable"
 
 
 def validate_media(data: bytes, extension: str) -> str:
@@ -345,14 +351,77 @@ class Handler(BaseHTTPRequestHandler):
         return ((not allowed or self.client_address[0] in allowed) and bool(provided) and
                 hmac.compare_digest(provided.encode("utf-8"), self.server.token.encode("utf-8")))
 
-    def _send(self, code: int, body: bytes, content_type: str) -> None:
+    def _send(self, code: int, body: bytes, content_type: str,
+              cache_control: str = "no-store", headers: dict | None = None) -> None:
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         self.send_header("X-Content-Type-Options", "nosniff")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_file(self, path: Path, content_type: str) -> None:
+        size = path.stat().st_size
+        start, end = 0, size - 1
+        code = 200
+        requested = self.headers.get("Range", "")
+        if requested:
+            try:
+                if not requested.startswith("bytes=") or "," in requested:
+                    raise ValueError
+                first, last = requested[6:].split("-", 1)
+                if first:
+                    start = int(first)
+                    end = int(last) if last else size - 1
+                else:
+                    suffix = int(last)
+                    if suffix <= 0:
+                        raise ValueError
+                    start = max(0, size - suffix)
+                    end = size - 1
+                if start < 0 or start >= size or end < start:
+                    raise ValueError
+                end = min(end, size - 1)
+                code = 206
+            except (ValueError, TypeError):
+                self._send(416, b"", content_type, MEDIA_CACHE,
+                           {"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"})
+                return
+        length = max(0, end - start + 1)
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(length))
+        self.send_header("Cache-Control", MEDIA_CACHE)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Accept-Ranges", "bytes")
+        if code == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.end_headers()
+        with path.open("rb") as stream:
+            stream.seek(start)
+            remaining = length
+            while remaining:
+                block = stream.read(min(64 * 1024, remaining))
+                if not block:
+                    break
+                self.wfile.write(block)
+                remaining -= len(block)
+
+    def _send_media(self, selected: Path | None) -> None:
+        if selected:
+            try:
+                mime = SUPPORTED[selected.suffix.lower()]
+                if mime == "video/mp4":
+                    self._send_file(selected, mime)
+                else:
+                    self._send(200, selected.read_bytes(), mime, MEDIA_CACHE)
+                return
+            except OSError:
+                pass
+        self._send(200, (STATIC / "fallback.svg").read_bytes(), "image/svg+xml", MEDIA_CACHE)
 
     def _json(self, code: int, payload: dict) -> None:
         self._send(code, json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8")
@@ -397,44 +466,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/ui/default":
             with self.server.state.lock:
                 selected = self.server.state.active_file
-                if selected:
-                    try:
-                        data = selected.read_bytes()
-                        mime = SUPPORTED[selected.suffix.lower()]
-                    except OSError:
-                        selected = None
-                if not selected:
-                    data = (STATIC / "fallback.svg").read_bytes()
-                    mime = "image/svg+xml"
-            self._send(200, data, mime)
+            self._send_media(selected)
             return
         if path == "/ui/shutdown":
             with self.server.state.lock:
                 selected = self.server.state.shutdown_file
-                if selected:
-                    try:
-                        data = selected.read_bytes()
-                        mime = SUPPORTED[selected.suffix.lower()]
-                    except OSError:
-                        selected = None
-                if not selected:
-                    data = (STATIC / "fallback.svg").read_bytes()
-                    mime = "image/svg+xml"
-            self._send(200, data, mime)
+            self._send_media(selected)
             return
         if path.startswith("/ui/game/"):
             kind = path[len("/ui/game/"):]
             with self.server.state.lock:
                 media = self.server.state.game_media.get(kind)
             if media:
-                self._send(200, media[0], media[1])
+                self._send(200, media[0], media[1], MEDIA_CACHE)
             else:
                 self._json(404, {"error": "No game artwork"})
             return
         if path in ("/ui/", "/ui/index.html", "/ui/app.js", "/ui/gesture.js", "/ui/fallback.svg"):
             filename = "index.html" if path == "/ui/" else path.split("/")[-1]
-            mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-            self._send(200, (STATIC / filename).read_bytes(), mime)
+            self._send(200, (STATIC / filename).read_bytes(), STATIC_MIME[filename], "no-cache")
             return
         self._json(404, {"error": "Not found"})
 

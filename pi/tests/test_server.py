@@ -127,6 +127,9 @@ class ApiTests(unittest.TestCase):
             thread.start()
             base = f"http://127.0.0.1:{server.server_port}"
             try:
+                with urlopen(base + "/ui/app.js", timeout=3) as response:
+                    self.assertEqual(response.headers["Content-Type"], "text/javascript; charset=utf-8")
+                    self.assertEqual(response.headers["Cache-Control"], "no-cache")
                 with self.assertRaises(HTTPError) as result:
                     urlopen(base + "/v1/status", timeout=3)
                 self.assertEqual(result.exception.code, 401)
@@ -169,6 +172,9 @@ class ApiTests(unittest.TestCase):
                 )
                 with urlopen(request, timeout=3) as response:
                     self.assertEqual(response.status, 200)
+                with urlopen(base + "/ui/game/marquee?v=1", timeout=3) as response:
+                    self.assertEqual(response.headers["Cache-Control"],
+                                     "public, max-age=31536000, immutable")
                 partial_payload = json.dumps({
                     "title": "Partial Artwork",
                     "marquee": {"extension": ".png", "base64": "not-base64"},
@@ -225,6 +231,16 @@ class ApiTests(unittest.TestCase):
                     status = json.load(response)
                 self.assertEqual(status["game_title"], "Test Game")
                 self.assertTrue(status["has_marquee"])
+
+                with patch("arcade_pi.verify_mp4", return_value=8.5):
+                    state.save_default(MP4, ".mp4")
+                ranged = Request(base + "/ui/default?v=2", headers={"Range": "bytes=4-11"})
+                with urlopen(ranged, timeout=3) as response:
+                    self.assertEqual(response.status, 206)
+                    self.assertEqual(response.headers["Content-Range"],
+                                     f"bytes 4-11/{len(MP4)}")
+                    self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+                    self.assertEqual(response.read(), MP4[4:12])
 
                 request = Request(
                     base + "/v1/default", data=b"", method="POST",
