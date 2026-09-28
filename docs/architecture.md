@@ -44,6 +44,10 @@ Die konkrete Netzwerk-API steht in [protocol.md](protocol.md). Auf dem getestete
 
 Windows-Startmenü und Big-Box-Menü sollen denselben Vorgang auslösen: Pi herunterfahren, danach Windows herunterfahren, zuletzt die Funksteckdose manuell ausschalten. Bei Windows-Neustart darf kein Pi-Shutdown ausgelöst werden. Ein allgemeines Windows-Shutdown-Skript eignet sich nicht, weil es auch bei Neustarts läuft. Die Tray-App verarbeitet `WM_ENDSESSION` nur bei bestätigtem Sitzungsende ohne Logoff oder App-Neustart. Sie liest dann das jüngste User32-Ereignis 1074 aus dem Systemprotokoll, das seit App-Start und vor höchstens zwei Minuten geschrieben wurde. Bekannte Neustartbegriffe in mehreren Windows-Sprachen werden zuerst ausgeschlossen. Nur die eindeutig unterstützten Ausschalt-Typen `shutdown`, `power off`, `herunterfahren` und `ausschalten` senden einen Pi-Shutdown mit drei Sekunden Zeitlimit. Bei einer anderen Windows-Anzeigesprache, einem Neustart, einem fehlenden Ereignis oder einem Lesefehler bleibt der Pi sicherheitshalber eingeschaltet; der erkannte Typ steht dann in `shutdown.log`.
 
+## Kompatibilitätsnamen
+
+Die sichtbare Anwendung und neue Dateien heißen Marquee-Pi. Die Named Pipe `ArcadePiDisplayGameEvents`, der HTTP-Header `X-Arcade-Token`, das Pi-Skript `arcade_pi.py` und die Installationspfade `/opt/arcade-pi-display` sowie `/var/lib/arcade-pi-display` bleiben während Protokollversion 1 absichtlich bestehen. Dadurch funktionieren ältere Plugin-Versionen und vorhandene Pi-Installationen weiter. Das Windows-Tool übernimmt außerdem einmalig Einstellungen aus `%LOCALAPPDATA%\ArcadePiDisplay`. Diese Kennungen werden frühestens mit einer neuen inkompatiblen Protokoll-Hauptversion entfernt.
+
 Ein Pi-Overlay-Dateisystem kann die SD-Karte zusätzlich gegen versehentliches frühes Abschalten schützen. Es ersetzt nicht den geordneten Ausschaltablauf. Lokale Konfiguration und Medien müssen vor Aktivierung des schreibgeschützten Overlays vorbereitet werden.
 
 ## Vor Ort zu prüfen
