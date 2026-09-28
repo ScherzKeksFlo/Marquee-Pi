@@ -24,7 +24,13 @@ Für die Aktion **RetroArch-Menü öffnen** kann Marquee-Pi entweder das eingest
 
 **Windows-Firewall beim ersten RetroArch-Start:** Nach dem Aktivieren der Netzwerkbefehle kann Windows eine Freigabe für `retroarch.exe` verlangen. Marquee-Pi sendet den Befehl nur an `127.0.0.1`. Teste zunächst ohne zusätzliche Freigabe. Falls die lokale Menüaktion dann nicht funktioniert, erlaube RetroArch höchstens in vertrauenswürdigen privaten Netzwerken; „Öffentliche Netzwerke“ bleibt abgewählt. Gib den Netzwerkbefehls-Port nicht absichtlich für fremde Geräte frei. Hintergrund: [Windows-Firewall-Profile](https://learn.microsoft.com/windows/security/operating-system-security/network-security/windows-firewall/).
 
-**Standardmedien verwalten…** importiert JPG, PNG, GIF, WebP und MP4 bis 20 MB. **Auf Pi aktivieren** überträgt das Medium; der Pi speichert es für den nächsten eigenen Start. Das Tray bietet außerdem Standardlogo, Neuladen, Pi-Neustart und Pi-Shutdown. Beim vollständigen Windows-Shutdown wird der Pi nur nach einem passenden Windows-Ereignis heruntergefahren; ein Windows-Neustart lässt ihn eingeschaltet. Diagnosemeldungen stehen in `shutdown.log` im jeweiligen Datenordner. `Marquee-Pi.exe --pi-shutdown` sendet den Befehl manuell.
+**Medien verwalten…** importiert JPG, PNG, GIF, WebP und MP4 bis 20 MB. Eine Datei kann anschließend einer oder mehreren Rollen zugeordnet werden:
+
+- **Als Standard:** Logo oder Animation, die der Kiosk ohne laufendes Spiel zeigt.
+- **Als Boot-Splash:** statisches PNG oder JPEG für die Zeit zwischen Kernelstart und Kiosk. Die Änderung gilt ab dem nächsten Pi-Start.
+- **Als Shutdown-Medium:** Bild, GIF, WebP oder H.264-MP4, das vor dem Ausschalten erscheint. Ein MP4 läuft einmal; der Shutdown wartet auf seine Dauer, höchstens 30 Sekunden.
+
+Die aktiven Rollen stehen oben im Medienfenster. Eine verwendete Datei kann erst gelöscht werden, nachdem für jede ihrer Rollen ein Ersatz gewählt wurde. Alle drei Rollen werden auf dem Pi gespeichert und benötigen beim Anzeigen keine Windows-Verbindung. Das Tray bietet außerdem Standardlogo, Neuladen, Pi-Neustart und Pi-Shutdown. Beim vollständigen Windows-Shutdown wird der Pi nur nach einem passenden Windows-Ereignis heruntergefahren; ein Windows-Neustart lässt ihn eingeschaltet. Diagnosemeldungen stehen in `shutdown.log` im jeweiligen Datenordner. `Marquee-Pi.exe --pi-shutdown` sendet den Befehl manuell.
 
 ## Prüfung
 

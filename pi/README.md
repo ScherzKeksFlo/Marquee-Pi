@@ -2,13 +2,15 @@
 
 Die vollständige Anleitung für eine frische Raspberry Pi OS Lite-Installation steht in [INSTALL.md](INSTALL.md). Die Trixie-Installation und Anzeige wurden auf einem Pi 3 B+ mit 7-Zoll-DSI-Display geprüft. Bei schwarzem DSI-Bild auf Kernel 6.18 beschreibt INSTALL.md den getesteten FKMS-Workaround.
 
-Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte API. Die Anzeige lädt ein auf dem Pi gespeichertes Standardbild oder Video, zeigt Spielgrafiken und verarbeitet Tippen sowie vier Wischrichtungen. Die vier Wischgesten lassen sich im Windows-Tool unabhängig mit Bildansichten oder einer RetroArch-Tastenkombination belegen.
+Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte API. Die Anzeige lädt ein auf dem Pi gespeichertes Standardbild oder Video, zeigt Spielgrafiken und verarbeitet Tippen sowie vier Wischrichtungen. Boot-Splash und Shutdown-Medium werden ebenfalls über das Windows-Tool hochgeladen und dauerhaft auf dem Pi gespeichert.
 
 ## Voraussetzungen
 
 - Raspberry Pi OS Lite mit X11, `xinit`, `xset` (`x11-xserver-utils`) und Chromium (am Pi 3 B+ mit Trixie/Python 3.13 geprüft)
 - Python 3
 - `ffprobe` aus FFmpeg für MP4-Uploads
+- `fbi` für das statische Bild vor dem X11-Kiosk
+- `curl` für die lokale Shutdown-Anzeige
 - Ein dauerhaft beschreibbarer Datenordner für das Standardmedium
 - Netzwerkverbindung zum Windows-PC für Spielereignisse; zum Starten der Standardanzeige ist sie nicht erforderlich
 
@@ -19,13 +21,13 @@ Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte 
 3. `python3 arcade_pi.py --config config.json` starten.
 4. `http://127.0.0.1:8765/ui/` im Browser öffnen. `start-kiosk.sh` startet Chromium im Vollbild.
 
-`arcade-pi-display.service.example` und `arcade-pi-kiosk.service.example` sind Vorlagen für den Systemstart. Benutzername und Pfade müssen zur Pi-Installation passen. Der Kioskdienst startet Xorg auf `tty7` und Chromium ohne Desktop-Sitzung. `start-kiosk.sh` deaktiviert beim X11-Start den Bildschirmschoner und DPMS, damit das Display während des Kioskbetriebs nicht schwarz wird. Auf dem getesteten Buster-System verhindert `chromium-policy.example.json` als `/etc/chromium-browser/policies/managed/arcade-pi-display.json` die Übersetzungsleiste. Bei einem schreibgeschützten Overlay muss der Datenordner auf einer separat beschreibbaren Partition liegen; sonst gehen Uploads beim nächsten Neustart verloren.
+`arcade-pi-display.service.example`, `arcade-pi-kiosk.service.example`, `marquee-pi-boot-splash.service.example` und `marquee-pi-shutdown-animation.service.example` sind Vorlagen für den Systemstart. Benutzername und Pfade müssen zur Pi-Installation passen. Der Kioskdienst startet Xorg auf `tty7` und Chromium ohne Desktop-Sitzung. `start-kiosk.sh` deaktiviert beim X11-Start den Bildschirmschoner und DPMS. Der Boot-Dienst zeigt das hochgeladene PNG/JPEG auf `tty1`; der Shutdown-Dienst zeigt das hinterlegte Medium, solange API und Kiosk noch laufen. Die aktuelle Trixie-Installation verwendet die Chromium-Richtlinie unter `/etc/chromium/policies/managed/`.
 
 ## Neustart und Shutdown
 
-Die API-Befehle sind standardmäßig deaktiviert und antworten mit HTTP 503. Auf dem getesteten Buster-Pi laufen sie über `systemctl` und eine Polkit-Regel für den eigenen Dienstbenutzer `arcadepi`; `NoNewPrivileges=true` bleibt aktiv. Die Regelvorlage liegt in `arcade-pi-display.pkla.example`.
+Die API-Befehle sind standardmäßig deaktiviert und antworten mit HTTP 503. Auf Trixie laufen sie über `systemctl` und eine Polkit-Regel für den eigenen Dienstbenutzer `arcadepi`; `NoNewPrivileges=true` bleibt aktiv.
 
-Für die Dienstvorlage den Systembenutzer `arcadepi` ohne Login-Shell anlegen, `/var/lib/arcade-pi-display` diesem Benutzer zuordnen und `/etc/arcade-pi-display/config.json` als `root:arcadepi` mit Modus `640` speichern. Die PKLA-Vorlage gehört nur auf Buster nach `/etc/polkit-1/localauthority/50-local.d/arcade-pi-display.pkla`. Auf Trixie gilt die JavaScript-Regel `arcade-pi-display.rules.example` unter `/etc/polkit-1/rules.d/`. Danach beide Dienste mit `systemctl enable --now` aktivieren. `power_commands_enabled` erst nach Installation der Regel, Prüfung mit `pkcheck` und einem Neustarttest aktivieren. Der API-Neustart ist am Gerät geprüft, Shutdown noch nicht, weil danach ein manueller Stromzyklus nötig ist.
+Für die Dienstvorlage den Systembenutzer `arcadepi` ohne Login-Shell anlegen, `/var/lib/arcade-pi-display` diesem Benutzer zuordnen und `/etc/arcade-pi-display/config.json` als `root:arcadepi` mit Modus `640` speichern. Die PKLA-Vorlage gehört nur auf Buster nach `/etc/polkit-1/localauthority/50-local.d/arcade-pi-display.pkla`. Auf Trixie gilt die JavaScript-Regel `arcade-pi-display.rules.example` unter `/etc/polkit-1/rules.d/`. Danach die vier in INSTALL.md beschriebenen Dienste aktivieren. `power_commands_enabled` erst nach Installation der Regel, Prüfung mit `pkcheck` und einem Neustarttest aktivieren. API-Neustart und Shutdown sind am Zielgerät geprüft.
 
 ## Tests
 
@@ -40,4 +42,4 @@ Die Windows-PowerShell-Entsprechung für den ersten Befehl ist `$env:PYTHONPATH=
 
 ## Gerätetest
 
-Am Raspberry Pi 3 B+ mit Raspbian Buster, Python 3.7, Chromium 92 und 800 × 480 Touchdisplay geprüft: API-Tests bestanden, H.264-MP4 als lokales Standardmedium gespeichert, Spielgrafik im Kiosk angezeigt und nach einem Pi-Neustart das Standardvideo automatisch wiedergegeben. Die Windows-Anbindung wurde mit einem realen Big-Box-Spielstart geprüft; das passende Marquee erschien und beim Spielende kehrte die Standardanimation zurück. Touch-Eingaben am realen Display stehen noch aus.
+Am Raspberry Pi 3 B+ mit Raspberry Pi OS Trixie, Kernel 6.18, Chromium und 800 × 480 Touchdisplay geprüft: API-Tests, Touchgesten, H.264-Standardvideo, reale Big-Box-Spielwechsel, RetroArch-Menüaufruf sowie Shutdown über Big Box und das Windows-Startmenü funktionieren. Das DSI-Display wurde mit `bootcode_delay=5` in drei aufeinanderfolgenden Kaltstarts erkannt.

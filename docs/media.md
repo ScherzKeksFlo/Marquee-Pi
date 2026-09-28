@@ -1,8 +1,8 @@
-# Standardmedium und Medienverwaltung
+# Medienverwaltung
 
 ## Aufgabe des Windows-Tools
 
-Das Windows-Tool verwaltet eine Bibliothek eigener Standardmedien. Es kann Dateien hinzufügen, eine Vorschau anzeigen, das aktive Standardmedium auswählen, dieses auf den Pi übertragen und nicht mehr benötigte Einträge löschen. Das aktive Medium darf erst nach Wahl eines Ersatzes gelöscht werden. Nach einem Upload meldet der Pi Formatfehler und Speicherprobleme sichtbar an Windows zurück.
+Das Windows-Tool verwaltet eine gemeinsame Bibliothek eigener Medien. Es kann Dateien hinzufügen, eine Vorschau anzeigen und eine Datei als Standardmedium, Boot-Splash oder Shutdown-Medium auf den Pi übertragen. Eine Datei darf mehreren Rollen zugeordnet sein. Solange sie in mindestens einer Rolle aktiv ist, kann sie lokal erst nach Wahl eines Ersatzes gelöscht werden. Nach einem Upload meldet der Pi Formatfehler und Speicherprobleme sichtbar an Windows zurück.
 
 Der Pi hält das zuletzt aktivierte Standardmedium lokal vor. Damit erscheint es bereits beim Pi-Start, bevor Windows erreichbar ist. Ein neues Medium wird zunächst vollständig übertragen und geprüft; erst danach ersetzt es das aktive Medium. Bei fehlgeschlagenem Upload bleibt das bisherige Standardmedium erhalten.
 
@@ -10,14 +10,16 @@ Der Pi hält das zuletzt aktivierte Standardmedium lokal vor. Damit erscheint es
 
 Die ausgewählte Datei und die Information, welche Datei aktiv ist, liegen dauerhaft auf dem Pi. Das Anzeigeprogramm startet beim Booten automatisch und lädt dieses Medium aus lokalem Speicher; es wartet dafür weder auf Netzwerk noch auf LaunchBox. Ein MP4 oder eine Animation beginnt in Endlosschleife, sobald die grafische Ausgabe bereit ist. Wenn die aktive Datei beschädigt oder nicht lesbar ist, erscheint ein mitgeliefertes lokales Ersatzbild.
 
-Zwischen Einschalten und Start der grafischen Ausgabe kann der Pi nur seine normale Bootanzeige zeigen. Für eine durchgehende Optik kann später zusätzlich ein statisches frühes Bootbild eingerichtet werden; die Eignung und Aktualisierung dieses Bootbilds müssen mit der tatsächlich installierten Pi-OS-Version geprüft werden. Video und Animation laufen erst nach Start des Anzeigeprogramms.
+Das statische Boot-Bild liegt ebenfalls dauerhaft auf dem Pi. Der Framebuffer zeigt es, bis der X11-Kiosk die Ausgabe übernimmt. Der Kernelstart wird mit den dokumentierten `cmdline.txt`-Optionen weitgehend ausgeblendet. Video und Animation starten erst mit Chromium; der frühe Splash akzeptiert deshalb nur PNG oder JPEG.
+
+Das Shutdown-Medium wird vor `systemctl poweroff` im bereits laufenden Kiosk gezeigt. Ein H.264-MP4 spielt einmal ab. Die ermittelte Videodauer plus eine kurze Reserve bestimmt die Wartezeit, begrenzt auf 30 Sekunden. Bei einem direkten Shutdown am Pi sorgt ein eigener systemd-Dienst für denselben Ablauf.
 
 ## Formate der ersten Version
 
 | Endung | Verwendung | Hinweise |
 | --- | --- | --- |
-| `.jpg`, `.jpeg` | Foto oder statisches Logo | Keine Transparenz |
-| `.png` | Statisches Logo | Transparenz möglich |
+| `.jpg`, `.jpeg` | Foto, statisches Logo, Boot-Splash | Keine Transparenz |
+| `.png` | Statisches Logo, Boot-Splash | Transparenz möglich |
 | `.gif` | Kurze Animation | Auflösung und Bildrate für Pi 3 B+ begrenzen |
 | `.webp` | Statisches Logo | Animiertes WebP erst nach Test am Pi freigeben |
 | `.mp4` | Video in Endlosschleife | H.264-Videostream; Audio wird ignoriert |

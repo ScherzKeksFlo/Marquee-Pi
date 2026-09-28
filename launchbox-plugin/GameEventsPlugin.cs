@@ -93,17 +93,30 @@ namespace MarqueePiLaunchBox
         {
             try
             {
-                using (var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.Out))
+                string json;
+                var serializer = new DataContractJsonSerializer(typeof(GameMessage));
+                using (var memory = new MemoryStream())
                 {
-                    pipe.Connect(150);
-                    var serializer = new DataContractJsonSerializer(typeof(GameMessage));
-                    using (var memory = new MemoryStream())
+                    serializer.WriteObject(memory, message);
+                    memory.Position = 0;
+                    using (var reader = new StreamReader(memory))
+                        json = reader.ReadToEnd();
+                }
+                for (var attempt = 0; attempt < 3; attempt++)
+                {
+                    try
                     {
-                        serializer.WriteObject(memory, message);
-                        memory.Position = 0;
-                        using (var reader = new StreamReader(memory))
-                        using (var writer = new StreamWriter(pipe) { AutoFlush = true })
-                            writer.WriteLine(reader.ReadToEnd());
+                        using (var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.Out))
+                        {
+                            pipe.Connect(200);
+                            using (var writer = new StreamWriter(pipe) { AutoFlush = true })
+                                writer.WriteLine(json);
+                        }
+                        return;
+                    }
+                    catch when (attempt < 2)
+                    {
+                        Thread.Sleep(75);
                     }
                 }
             }

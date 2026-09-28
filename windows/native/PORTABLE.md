@@ -4,6 +4,8 @@
 2. Im Infobereich **Einstellungen…** öffnen und die Pi-Adresse und den API-Token eintragen. Der Knopf **Hilfe: Token erstellen** erklärt die Einrichtung am Pi.
 3. Das LaunchBox-Plugin aus `MarqueePiLaunchBox.dll` nach `LaunchBox/Plugins/Marquee-Pi/` kopieren. LaunchBox/Big Box danach neu starten.
 
+Unter **Medien verwalten…** kann jede importierte Datei als Standardmedium oder Shutdown-Medium auf den Pi übertragen werden. Für den frühen Boot-Splash ist ein statisches PNG oder JPEG erforderlich. Das Shutdown-Medium darf auch ein GIF, WebP oder H.264-MP4 sein. Ein Video wird beim Ausschalten einmal abgespielt; nach spätestens 30 Sekunden fährt der Pi fort.
+
 Die Datei `portable.flag` aktiviert den portablen Modus. Marquee-Pi legt `Data/settings.ini` und `Data/media/` im selben Ordner an. Beim Kopieren des gesamten Ordners werden Einstellungen und Medien mitgenommen. Die INI enthält den Token im Klartext und sollte nicht veröffentlicht werden.
 
 Die EXE benötigt unter Windows 11 keine separat installierte .NET-Laufzeit und keinen Installer. Der optionale Autostart speichert den absoluten EXE-Pfad im Benutzerkonto; nach dem Verschieben des Ordners den Autostart im Einstellungsfenster erneut speichern.

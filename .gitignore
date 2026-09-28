@@ -16,6 +16,9 @@ dist/
 build/
 logs/
 media/
+settings.ini
+**/Data/
+**/test-run/
 *.local.json
 pi/config.json
 .env

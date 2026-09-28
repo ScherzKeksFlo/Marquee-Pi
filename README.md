@@ -6,12 +6,12 @@ Ein Begleitbildschirm für LaunchBox/Big Box auf Windows 11 und einen Raspberry 
 
 ## Funktionen
 
-- Nach dem Einschalten startet die Pi-Anzeige ohne Windows-Verbindung und lädt das dauerhaft auf dem Pi gespeicherte Standardlogo, Video oder die Animation.
+- Nach dem Einschalten zeigt der Pi ein lokal gespeichertes statisches Boot-Bild. Sobald der Kiosk bereit ist, lädt er ohne Windows-Verbindung das dauerhaft gespeicherte Standardlogo, Video oder die Animation.
 - Beim Spielstart sendet das Windows-Programm die Spielkennung und passende Grafiken an den Pi. Das Display zeigt ein Marquee, alternativ Banner oder Logo.
 - Ein kurzes Tippen schaltet während des Spiels zwischen Marquee und Control-Panel-Ansicht um. Vier Wischrichtungen (oben nach unten, unten nach oben, links nach rechts, rechts nach links) lassen sich im Windows-Tool unabhängig mit Bildansichten oder dem RetroArch-Menü belegen. Für RetroArch sind ein frei einstellbares Tastaturkürzel und ein lokaler Netzwerkbefehl wählbar. Beim Spielende erscheint wieder das Standardlogo.
 - Bei einem Windows-Neustart bleibt der Pi eingeschaltet; ein Verbindungsabbruch setzt nur die Anzeige zurück.
-- Ein Windows-Symbol im Infobereich zeigt den Verbindungsstatus und bietet Anzeige neu laden, Pi neu starten, Pi herunterfahren und Standardlogo anzeigen. Über das Windows-Tool lassen sich eigene Standardmedien hochladen, auswählen und verwalten.
-- Beim vollständigen Herunterfahren über Big Box oder das Windows-Startmenü erhält der Pi einen Shutdown-Befehl und fährt selbstständig herunter. Danach kann die Funksteckdose manuell ausgeschaltet werden.
+- Ein Windows-Symbol im Infobereich zeigt den Verbindungsstatus und bietet Anzeige neu laden, Pi neu starten, Pi herunterfahren und Standardlogo anzeigen. Über **Medien verwalten…** lassen sich Standardmedium, Boot-Splash und Shutdown-Medium unabhängig auswählen und auf den Pi übertragen.
+- Beim vollständigen Herunterfahren über Big Box oder das Windows-Startmenü zeigt der Pi das hinterlegte Shutdown-Bild oder -Video und fährt danach selbstständig herunter. Danach kann die Funksteckdose manuell ausgeschaltet werden.
 
 ## Komponenten
 
@@ -29,7 +29,8 @@ Das portable Windows-Paket enthält EXE, Plugin-DLL, Anleitung und Lizenz. IP-Ad
 1. [Raspberry Pi OS Lite installieren und Pi-Dienste einrichten](pi/INSTALL.md). Ein eigenes API-Token erzeugen und in der Pi-Konfiguration hinterlegen.
 2. Das portable Windows-Paket aus den GitHub-Releases entpacken. [Windows-Tool einrichten](windows/README.md) und Pi-Adresse sowie denselben Token eintragen.
 3. Die enthaltene LaunchBox-Plugin-DLL nach `LaunchBox\Plugins\Marquee-Pi\` kopieren und [LaunchBox/Big Box neu starten](launchbox-plugin/README.md).
-4. Ein Spiel starten und die Anzeige prüfen. Für die RetroArch-Menü-Wischgeste den [lokalen Netzwerkmodus und den möglichen Firewall-Dialog](windows/README.md) beachten.
+4. Unter **Medien verwalten…** ein Standardmedium, ein statisches PNG/JPEG als Boot-Splash und optional ein Shutdown-Medium festlegen.
+5. Ein Spiel starten und die Anzeige prüfen. Für die RetroArch-Menü-Wischgeste den [lokalen Netzwerkmodus und den möglichen Firewall-Dialog](windows/README.md) beachten.
 
 Der automatische Pi-Shutdown wurde sowohl beim Ausschalten über Big Box als auch über das normale Windows-Startmenü praktisch geprüft. Pi-Neustart und Pi-Shutdown über das Tray-Menü sind getrennte Funktionen.
 

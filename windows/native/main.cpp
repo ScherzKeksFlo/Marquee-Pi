@@ -31,7 +31,7 @@ enum SettingId {
     S_STARTUP, S_MEDIA, S_OPEN_INI, S_SAVE, S_CANCEL,
     S_GESTURE0 = 2020
 };
-enum MediaId { D_LIST = 3001, D_ADD, D_PREVIEW, D_ACTIVATE, D_REMOVE };
+enum MediaId { D_LIST = 3001, D_ADD, D_PREVIEW, D_ACTIVATE, D_BOOT, D_SHUTDOWN, D_REMOVE };
 struct StatusUpdate { bool connected; std::wstring title; };
 struct SettingsWindow;
 struct MediaWindow;
@@ -163,7 +163,8 @@ public:
     uint64_t gameVersion = 0, configVersion = 0;
     bool needsSync = false, pendingDefault = false, gestureDirty = true;
     std::atomic<bool> stopping{false};
-    std::atomic<HANDLE> activePipe{INVALID_HANDLE_VALUE};
+    std::mutex pipeHandleMutex;
+    HANDLE activePipe = INVALID_HANDLE_VALUE;
     std::thread polling, pipe;
     UINT taskbarCreated = 0;
     bool connected = false;
@@ -224,8 +225,10 @@ void App::close() {
         data.cbSize = sizeof(data); data.hWnd = hwnd; data.uID = 1;
         Shell_NotifyIconW(NIM_DELETE, &data);
     }
-    HANDLE active = activePipe.load();
-    if (active != INVALID_HANDLE_VALUE) CancelIoEx(active, nullptr);
+    {
+        std::lock_guard<std::mutex> guard(pipeHandleMutex);
+        if (activePipe != INVALID_HANDLE_VALUE) CancelIoEx(activePipe, nullptr);
+    }
     HANDLE wake = CreateFileW(PIPE_NAME, GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
     if (wake != INVALID_HANDLE_VALUE) {
         DWORD n = 0; WriteFile(wake, "\n", 1, &n, nullptr); CloseHandle(wake);
@@ -253,7 +256,7 @@ void App::menu() {
     HMENU popup = CreatePopupMenu();
     AppendMenuW(popup, MF_STRING | MF_GRAYED, 0, status.c_str());
     AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(popup, MF_STRING, M_MEDIA, L"Standardmedien verwalten...");
+    AppendMenuW(popup, MF_STRING, M_MEDIA, L"Medien verwalten...");
     AppendMenuW(popup, MF_STRING, M_DEFAULT, L"Standardlogo anzeigen");
     AppendMenuW(popup, MF_STRING, M_RELOAD, L"Anzeige neu laden");
     AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
@@ -369,10 +372,21 @@ void App::pollLoop() {
                     std::lock_guard<std::mutex> guard(mutex);
                     if (gameVersion == version) pendingDefault = false;
                 } else if (sync && current) {
-                    piRequest(copy, L"POST", L"/v1/game", gamePayload(*current),
-                              L"application/json; charset=utf-8");
-                    std::lock_guard<std::mutex> guard(mutex);
-                    if (gameVersion == version) needsSync = false;
+                    try {
+                        piRequest(copy, L"POST", L"/v1/game", gamePayload(*current),
+                                  L"application/json; charset=utf-8");
+                        std::lock_guard<std::mutex> guard(mutex);
+                        if (gameVersion == version) needsSync = false;
+                    } catch (const HttpError& error) {
+                        if (error.status >= 400 && error.status < 500) {
+                            std::lock_guard<std::mutex> guard(mutex);
+                            if (gameVersion == version) needsSync = false;
+                        } else {
+                            online = false;
+                        }
+                    } catch (...) {
+                        online = false;
+                    }
                 }
             } catch (...) {}
             try {
@@ -404,30 +418,38 @@ void App::pollLoop() {
 void App::pipeLoop() {
     while (!stopping) {
         HANDLE handle = CreateNamedPipeW(PIPE_NAME, PIPE_ACCESS_INBOUND,
-                                         PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-                                         1, 131072, 131072, 0, nullptr);
+                                         PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT |
+                                             PIPE_REJECT_REMOTE_CLIENTS,
+                                         PIPE_UNLIMITED_INSTANCES, 131072, 131072, 0, nullptr);
         if (handle == INVALID_HANDLE_VALUE) { std::this_thread::sleep_for(std::chrono::seconds(1)); continue; }
-        activePipe = handle;
+        {
+            std::lock_guard<std::mutex> guard(pipeHandleMutex);
+            activePipe = handle;
+        }
         bool connectedPipe = ConnectNamedPipe(handle, nullptr) || GetLastError() == ERROR_PIPE_CONNECTED;
+        std::string line;
         if (connectedPipe) {
-            std::string line;
             char block[4096];
             DWORD read = 0;
             while (line.size() < 100000 && ReadFile(handle, block, sizeof(block), &read, nullptr) && read) {
                 line.append(block, read);
                 if (line.find('\n') != std::string::npos) break;
             }
-            size_t end = line.find('\n');
-            if (end != std::string::npos) line.resize(end);
-            if (!stopping && !line.empty() && line.size() <= 100000) {
-                try {
-                    auto* game = new GameMessage(parseGameMessage(line));
-                    if (!PostMessageW(hwnd, WM_GAME, 0, (LPARAM)game)) delete game;
-                } catch (...) {}
-            }
         }
         DisconnectNamedPipe(handle);
-        CloseHandle(handle);
+        {
+            std::lock_guard<std::mutex> guard(pipeHandleMutex);
+            if (activePipe == handle) activePipe = INVALID_HANDLE_VALUE;
+            CloseHandle(handle);
+        }
+        size_t end = line.find('\n');
+        if (end != std::string::npos) line.resize(end);
+        if (!stopping && !line.empty() && line.size() <= 100000) {
+            try {
+                auto* game = new GameMessage(parseGameMessage(line));
+                if (!PostMessageW(hwnd, WM_GAME, 0, (LPARAM)game)) delete game;
+            } catch (...) {}
+        }
     }
 }
 void App::onShutdown() {
@@ -501,7 +523,7 @@ struct SettingsWindow {
         autostart = control(hwnd, L"BUTTON", L"Mit Windows starten", BS_AUTOCHECKBOX,
                              20, 518, 180, 26, S_STARTUP);
         SendMessageW(autostart, BM_SETCHECK, current.autostart ? BST_CHECKED : BST_UNCHECKED, 0);
-        control(hwnd, L"BUTTON", L"Standardmedien verwalten...", BS_PUSHBUTTON,
+        control(hwnd, L"BUTTON", L"Medien verwalten...", BS_PUSHBUTTON,
                 220, 516, 210, 28, S_MEDIA);
         control(hwnd, L"BUTTON", L"INI-Datei öffnen", BS_PUSHBUTTON,
                 445, 516, 150, 28, S_OPEN_INI);
@@ -612,9 +634,9 @@ struct MediaWindow {
     App* app = nullptr;
     HWND hwnd = nullptr, list = nullptr, activeLabel = nullptr;
     explicit MediaWindow(App* owner) : app(owner) {}
-    std::wstring activeName() {
+    std::wstring activeName(const wchar_t* marker = L"active-media.txt") {
         try {
-            std::wstring text = fromUtf8(readFile(dataDirectory() + L"\\active-media.txt"));
+            std::wstring text = fromUtf8(readFile(dataDirectory() + L"\\" + marker));
             while (!text.empty() && (text.back() == L'\r' || text.back() == L'\n')) text.pop_back();
             return text;
         } catch (...) { return L""; }
@@ -627,8 +649,12 @@ struct MediaWindow {
             if (file.is_regular_file()) names.push_back(file.path().filename().wstring());
         std::sort(names.begin(), names.end());
         for (const auto& name : names) SendMessageW(list, LB_ADDSTRING, 0, (LPARAM)name.c_str());
-        std::wstring active = activeName();
-        std::wstring label = L"Aktiv: " + (active.empty() ? L"kein eigenes Medium" : active);
+        std::wstring standard = activeName();
+        std::wstring boot = activeName(L"boot-media.txt");
+        std::wstring shutdown = activeName(L"shutdown-media.txt");
+        std::wstring label = L"Standard: " + (standard.empty() ? L"kein eigenes Medium" : standard) +
+            L"\r\nBoot-Splash: " + (boot.empty() ? L"nicht eingerichtet" : boot) +
+            L"\r\nShutdown: " + (shutdown.empty() ? L"nicht eingerichtet" : shutdown);
         SetWindowTextW(activeLabel, label.c_str());
     }
     std::wstring selected() {
@@ -642,13 +668,15 @@ struct MediaWindow {
         return name;
     }
     void create() {
-        activeLabel = control(hwnd, L"STATIC", L"Aktiv:", 0, 15, 15, 540, 26);
+        activeLabel = control(hwnd, L"STATIC", L"Medien:", SS_LEFT, 15, 12, 570, 58);
         list = control(hwnd, L"LISTBOX", L"", LBS_NOTIFY | WS_BORDER | WS_VSCROLL,
-                       15, 45, 540, 250, D_LIST);
-        control(hwnd, L"BUTTON", L"Hinzufügen", BS_PUSHBUTTON, 15, 315, 110, 30, D_ADD);
-        control(hwnd, L"BUTTON", L"Vorschau", BS_PUSHBUTTON, 135, 315, 100, 30, D_PREVIEW);
-        control(hwnd, L"BUTTON", L"Auf Pi aktivieren", BS_PUSHBUTTON, 245, 315, 155, 30, D_ACTIVATE);
-        control(hwnd, L"BUTTON", L"Entfernen", BS_PUSHBUTTON, 410, 315, 100, 30, D_REMOVE);
+                       15, 75, 570, 235, D_LIST);
+        control(hwnd, L"BUTTON", L"Hinzufügen", BS_PUSHBUTTON, 15, 322, 110, 30, D_ADD);
+        control(hwnd, L"BUTTON", L"Vorschau", BS_PUSHBUTTON, 135, 322, 100, 30, D_PREVIEW);
+        control(hwnd, L"BUTTON", L"Entfernen", BS_PUSHBUTTON, 245, 322, 100, 30, D_REMOVE);
+        control(hwnd, L"BUTTON", L"Als Standard", BS_PUSHBUTTON, 15, 362, 130, 30, D_ACTIVATE);
+        control(hwnd, L"BUTTON", L"Als Boot-Splash", BS_PUSHBUTTON, 155, 362, 150, 30, D_BOOT);
+        control(hwnd, L"BUTTON", L"Als Shutdown-Medium", BS_PUSHBUTTON, 315, 362, 190, 30, D_SHUTDOWN);
         refresh();
     }
     void add() {
@@ -685,7 +713,10 @@ struct MediaWindow {
         std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
         ShellExecuteW(hwnd, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     }
-    void activate() {
+    void activate(const wchar_t* endpoint = L"/v1/default-media",
+                  const wchar_t* marker = L"active-media.txt",
+                  const wchar_t* success = L"Das Standardmedium ist auf dem Pi aktiv.",
+                  bool imageOnly = false) {
         std::wstring name = selected();
         if (name.empty()) return;
         try {
@@ -695,17 +726,24 @@ struct MediaWindow {
             std::string body = readFile(path);
             if (body.size() > 20 * 1024 * 1024) throw std::runtime_error("File exceeds 20 MB upload limit");
             std::wstring ext = fs::path(name).extension().wstring();
-            piRequest(settings, L"POST", L"/v1/default-media", body,
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+            if (imageOnly && ext != L".png" && ext != L".jpg" && ext != L".jpeg")
+                throw std::runtime_error("Boot splash must be a PNG or JPEG image");
+            piRequest(settings, L"POST", endpoint, body,
                       L"application/octet-stream", L"X-File-Name: upload" + ext + L"\r\n");
-            writeFile(dataDirectory() + L"\\active-media.txt", toUtf8(name));
+            writeFile(dataDirectory() + L"\\" + marker, toUtf8(name));
             refresh();
-            alert(hwnd, L"Das Medium ist auf dem Pi aktiv.");
+            alert(hwnd, success);
         } catch (const std::exception& error) { alert(hwnd, errorText(error), L"Upload fehlgeschlagen"); }
     }
     void remove() {
         std::wstring name = selected();
         if (name.empty()) return;
-        if (name == activeName()) { alert(hwnd, L"Bitte zuerst ein anderes Medium aktivieren."); return; }
+        if (name == activeName() || name == activeName(L"boot-media.txt") ||
+            name == activeName(L"shutdown-media.txt")) {
+            alert(hwnd, L"Bitte das Medium zuerst in allen verwendeten Rollen ersetzen.");
+            return;
+        }
         std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
         if (!DeleteFileW(path.c_str())) { alert(hwnd, L"Datei konnte nicht entfernt werden."); return; }
         refresh();
@@ -723,8 +761,8 @@ void App::showMedia() {
     }
     auto* state = new MediaWindow(this);
     HWND window = CreateWindowExW(WS_EX_DLGMODALFRAME, L"MarqueePiMedia",
-                                 L"Marquee-Pi - Standardmedien", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-                                 CW_USEDEFAULT, CW_USEDEFAULT, 590, 400, hwnd, nullptr,
+                                 L"Marquee-Pi - Medien verwalten", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+                                 CW_USEDEFAULT, CW_USEDEFAULT, 620, 450, hwnd, nullptr,
                                  GetModuleHandleW(nullptr), state);
     if (!window) { delete state; alert(hwnd, L"Medienfenster konnte nicht geöffnet werden."); return; }
     mediaWindow = window;
@@ -748,6 +786,14 @@ static LRESULT CALLBACK mediaProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
         case D_ADD: state->add(); return 0;
         case D_PREVIEW: state->preview(); return 0;
         case D_ACTIVATE: state->activate(); return 0;
+        case D_BOOT:
+            state->activate(L"/v1/boot-splash", L"boot-media.txt",
+                            L"Der Boot-Splash ist auf dem Pi gespeichert und gilt ab dem nächsten Start.", true);
+            return 0;
+        case D_SHUTDOWN:
+            state->activate(L"/v1/shutdown-media", L"shutdown-media.txt",
+                            L"Das Shutdown-Medium ist auf dem Pi gespeichert.");
+            return 0;
         case D_REMOVE: state->remove(); return 0;
         }
         break;
@@ -786,7 +832,6 @@ static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) 
         Settings settings;
         bool inGame;
         { std::lock_guard<std::mutex> guard(app->mutex); settings = app->settings; inGame = app->game.has_value(); }
-        try { writeFile(dataDirectory() + L"\\gesture-diagnostic.txt", inGame ? "received-in-game\n" : "received-without-game\n"); } catch (...) {}
         if (inGame) {
             if (settings.retroArchNetworkControl) sendRetroArchNetworkCommand(settings.retroArchNetworkPort);
             else sendRetroArchHotkey(settings.hotkey);

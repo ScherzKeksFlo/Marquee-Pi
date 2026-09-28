@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <map>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include "json.hpp"
@@ -28,6 +29,11 @@ struct GameMessage {
 struct HttpResult {
     DWORD status = 0;
     std::string body;
+};
+
+struct HttpError : std::runtime_error {
+    DWORD status;
+    HttpError(DWORD code, const std::string& message) : std::runtime_error(message), status(code) {}
 };
 
 std::wstring fromUtf8(const std::string& s);

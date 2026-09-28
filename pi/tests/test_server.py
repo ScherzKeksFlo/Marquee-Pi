@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+import http.client
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -15,6 +16,19 @@ PNG = base64.b64decode(
 
 
 class StateTests(unittest.TestCase):
+    def test_boot_and_shutdown_media_survive_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            state = DisplayState(data_dir, 60)
+            state.save_boot_splash(PNG, ".png")
+            shutdown_name = state.save_shutdown(PNG, ".png")
+            restored = DisplayState(data_dir, 60)
+            self.assertTrue(restored.describe()["boot_splash_configured"])
+            self.assertEqual(restored.describe()["shutdown_name"], shutdown_name)
+            self.assertFalse(restored.describe()["shutting_down"])
+            restored.show_shutdown()
+            self.assertTrue(restored.describe()["shutting_down"])
+
     def test_default_survives_restart_and_bad_upload(self):
         with tempfile.TemporaryDirectory() as directory:
             state = DisplayState(Path(directory), 60)
@@ -68,6 +82,11 @@ class ApiTests(unittest.TestCase):
                     urlopen(base + "/v1/status", timeout=3)
                 self.assertEqual(result.exception.code, 401)
 
+                connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+                connection.request("GET", "/v1/status", headers={"X-Arcade-Token": "é"})
+                self.assertEqual(connection.getresponse().status, 401)
+                connection.close()
+
                 upload = Request(
                     base + "/v1/default-media", data=PNG, method="POST",
                     headers={"X-Arcade-Token": "a" * 32, "X-File-Name": "upload.png"},
@@ -76,6 +95,21 @@ class ApiTests(unittest.TestCase):
                     uploaded = json.load(response)
                 self.assertTrue(uploaded["name"].endswith(".png"))
                 self.assertEqual(state.describe()["default_name"], uploaded["name"])
+                boot_upload = Request(
+                    base + "/v1/boot-splash", data=PNG, method="POST",
+                    headers={"X-Arcade-Token": "a" * 32, "X-File-Name": "boot.png"},
+                )
+                with urlopen(boot_upload, timeout=3) as response:
+                    self.assertEqual(response.status, 200)
+                shutdown_upload = Request(
+                    base + "/v1/shutdown-media", data=PNG, method="POST",
+                    headers={"X-Arcade-Token": "a" * 32, "X-File-Name": "shutdown.png"},
+                )
+                with urlopen(shutdown_upload, timeout=3) as response:
+                    self.assertEqual(response.status, 200)
+                with urlopen(Request(base + "/ui/shutdown", data=b"", method="POST"), timeout=3):
+                    pass
+                self.assertTrue(state.describe()["shutting_down"])
                 payload = json.dumps({
                     "title": "Test Game",
                     "marquee": {"extension": ".png", "base64": base64.b64encode(PNG).decode()},
@@ -86,6 +120,26 @@ class ApiTests(unittest.TestCase):
                 )
                 with urlopen(request, timeout=3) as response:
                     self.assertEqual(response.status, 200)
+                partial_payload = json.dumps({
+                    "title": "Partial Artwork",
+                    "marquee": {"extension": ".png", "base64": "not-base64"},
+                    "logo": {"extension": ".png", "base64": base64.b64encode(PNG).decode()},
+                }).encode()
+                partial_request = Request(
+                    base + "/v1/game", data=partial_payload, method="POST",
+                    headers={"X-Arcade-Token": "a" * 32, "Content-Type": "application/json"},
+                )
+                with urlopen(partial_request, timeout=3) as response:
+                    partial_result = json.load(response)
+                self.assertEqual(partial_result["warnings"][0]["kind"], "marquee")
+                self.assertFalse(state.describe()["has_marquee"])
+                self.assertTrue(state.describe()["has_logo"])
+                request = Request(
+                    base + "/v1/game", data=payload, method="POST",
+                    headers={"X-Arcade-Token": "a" * 32, "Content-Type": "application/json"},
+                )
+                with urlopen(request, timeout=3):
+                    pass
                 gestures = Request(
                     base + "/v1/gesture-config",
                     data=json.dumps({"swipe-down": "retroarch_menu",

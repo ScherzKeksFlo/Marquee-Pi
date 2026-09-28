@@ -9,6 +9,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <mutex>
 #include <cwctype>
 
 namespace fs = std::filesystem;
@@ -19,6 +20,35 @@ struct WinHandle {
     ~WinHandle() { if (handle) WinHttpCloseHandle(handle); }
     operator HINTERNET() const { return handle; }
 };
+struct SharedHttp {
+    HINTERNET session = nullptr;
+    std::mutex mutex;
+    std::map<std::pair<std::wstring, INTERNET_PORT>, HINTERNET> connections;
+    SharedHttp() {
+        session = WinHttpOpen(L"Marquee-Pi/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
+                              WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (session) WinHttpSetTimeouts(session, 3000, 3000, 8000, 8000);
+    }
+    ~SharedHttp() {
+        for (const auto& item : connections) WinHttpCloseHandle(item.second);
+        if (session) WinHttpCloseHandle(session);
+    }
+    HINTERNET connection(const std::wstring& host, INTERNET_PORT port) {
+        if (!session) throw std::runtime_error("WinHTTP initialization failed");
+        std::lock_guard<std::mutex> guard(mutex);
+        auto key = std::make_pair(host, port);
+        auto existing = connections.find(key);
+        if (existing != connections.end()) return existing->second;
+        HINTERNET handle = WinHttpConnect(session, host.c_str(), port, 0);
+        if (!handle) throw std::runtime_error("Pi connection failed");
+        connections.emplace(std::move(key), handle);
+        return handle;
+    }
+};
+SharedHttp& httpClient() {
+    static SharedHttp client;
+    return client;
+}
 std::string trim(std::string s) {
     const char* chars = " \t\r\n";
     size_t first = s.find_first_not_of(chars);
@@ -319,49 +349,40 @@ bool isUser32ShutdownEvent(const std::wstring& xml) {
            xml.find(L"<Provider Name='Microsoft-Windows-User32'") != std::wstring::npos ||
            xml.find(L"<Provider Name=\"Microsoft-Windows-User32\"") != std::wstring::npos;
 }
-static void traceHotkey(const std::string& message) {
-    try { writeFile(dataDirectory() + L"\\hotkey-diagnostic.txt", message + "\n"); } catch (...) {}
-}
 bool sendRetroArchHotkey(const std::wstring& text) {
     auto keys = hotkeyKeys(text);
-    if (keys.empty()) { traceHotkey("invalid-hotkey"); return false; }
+    if (keys.empty()) return false;
     HWND window = GetForegroundWindow();
-    if (!window) { traceHotkey("no-foreground-window"); return false; }
+    if (!window) return false;
     DWORD pid = 0;
     GetWindowThreadProcessId(window, &pid);
-    if (!pid) { traceHotkey("no-foreground-pid"); return false; }
+    if (!pid) return false;
     HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!process) { traceHotkey("open-process-error=" + std::to_string(GetLastError())); return false; }
+    if (!process) return false;
     std::wstring path(32768, L'\0');
     DWORD n = DWORD(path.size());
     BOOL ok = QueryFullProcessImageNameW(process, 0, path.data(), &n);
-    DWORD queryError = ok ? 0 : GetLastError();
     CloseHandle(process);
-    if (!ok) { traceHotkey("query-process-error=" + std::to_string(queryError)); return false; }
+    if (!ok) return false;
     std::wstring name = lowerW(filename(path.substr(0, n)));
-    if (name != L"retroarch.exe") { traceHotkey("foreground=" + toUtf8(name)); return false; }
+    if (name != L"retroarch.exe") return false;
     std::vector<INPUT> press, release;
     for (BYTE key : keys) { INPUT i{}; i.type = INPUT_KEYBOARD; i.ki.wVk = key; press.push_back(i); }
     for (auto it = keys.rbegin(); it != keys.rend(); ++it) {
         INPUT i{}; i.type = INPUT_KEYBOARD; i.ki.wVk = *it; i.ki.dwFlags = KEYEVENTF_KEYUP; release.push_back(i);
     }
     UINT pressedCount = SendInput(UINT(press.size()), press.data(), sizeof(INPUT));
-    DWORD pressError = pressedCount == press.size() ? 0 : GetLastError();
     if (pressedCount == press.size()) Sleep(120);
     UINT releasedCount = SendInput(UINT(release.size()), release.data(), sizeof(INPUT));
-    DWORD releaseError = releasedCount == release.size() ? 0 : GetLastError();
-    traceHotkey("foreground=retroarch.exe press=" + std::to_string(pressedCount) +
-                "/" + std::to_string(press.size()) + " error=" + std::to_string(pressError) +
-                " release=" + std::to_string(releasedCount) + "/" +
-                std::to_string(release.size()) + " error=" + std::to_string(releaseError));
     return pressedCount == press.size() && releasedCount == release.size();
-}bool sendRetroArchNetworkCommand(int port) {
-    if (port < 1 || port > 65535) { traceHotkey("network-invalid-port"); return false; }
+}
+bool sendRetroArchNetworkCommand(int port) {
+    if (port < 1 || port > 65535) return false;
     WSADATA data{};
-    if (WSAStartup(MAKEWORD(2, 2), &data) != 0) { traceHotkey("network-startup-failed"); return false; }
+    if (WSAStartup(MAKEWORD(2, 2), &data) != 0) return false;
     SOCKET socketHandle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (socketHandle == INVALID_SOCKET) {
-        traceHotkey("network-socket-failed"); WSACleanup(); return false;
+        WSACleanup(); return false;
     }
     DWORD timeout = 500;
     setsockopt(socketHandle, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
@@ -382,9 +403,9 @@ bool sendRetroArchHotkey(const std::wstring& text) {
     }
     closesocket(socketHandle);
     WSACleanup();
-    traceHotkey(sent ? "network-menu-command-sent" : ready ? "network-send-failed" : "network-probe-timeout");
     return sent;
-}HttpResult piRequest(const Settings& s, const std::wstring& method, const std::wstring& path,
+}
+HttpResult piRequest(const Settings& s, const std::wstring& method, const std::wstring& path,
                      const std::string& body, const std::wstring& contentType,
                      const std::wstring& extraHeader, int timeoutMs) {
     if (!s.configured()) throw std::runtime_error("Pi-Adresse und Token zuerst einrichten");
@@ -397,16 +418,12 @@ bool sendRetroArchHotkey(const std::wstring& text) {
     std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
     std::wstring base = parts.lpszUrlPath ? std::wstring(parts.lpszUrlPath, parts.dwUrlPathLength) : L"";
     while (!base.empty() && base.back() == L'/') base.pop_back();
-    WinHandle session(WinHttpOpen(L"Marquee-Pi/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                                  WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
-    if (!session) throw std::runtime_error("WinHTTP initialization failed");
-    WinHttpSetTimeouts(session, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
-    WinHandle connection(WinHttpConnect(session, host.c_str(), parts.nPort, 0));
-    if (!connection) throw std::runtime_error("Pi connection failed");
+    HINTERNET connection = httpClient().connection(host, parts.nPort);
     std::wstring target = base + path;
     WinHandle request(WinHttpOpenRequest(connection, method.c_str(), target.c_str(), nullptr,
                                           WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
     if (!request) throw std::runtime_error("Pi request failed");
+    WinHttpSetTimeouts(request, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
     std::wstring headers = L"X-Arcade-Token: " + s.token + L"\r\n" + extraHeader;
     if (!contentType.empty()) headers += L"Content-Type: " + contentType + L"\r\n";
     if (!WinHttpSendRequest(request, headers.c_str(), DWORD(-1),
@@ -430,7 +447,7 @@ bool sendRetroArchHotkey(const std::wstring& text) {
         result.body.resize(start + read);
     }
     if (result.status < 200 || result.status >= 300)
-        throw std::runtime_error("Pi HTTP " + std::to_string(result.status) + ": " + result.body);
+        throw HttpError(result.status, "Pi HTTP " + std::to_string(result.status) + ": " + result.body);
     return result;
 }
 std::string gamePayload(const GameMessage& game) {

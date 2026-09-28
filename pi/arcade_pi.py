@@ -82,10 +82,13 @@ class DisplayState:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.timeout_seconds = timeout_seconds
         self.active_file = self._load_active_file()
+        self.boot_splash_file = self.data_dir / "boot-splash"
+        self.shutdown_file = self._load_manifest_file("shutdown.json")
         self.game_title = None
         self.game_media: dict[str, tuple[bytes, str]] = {}
         self.last_heartbeat = 0.0
         self.version = 1
+        self.shutting_down = False
         self.instance_id = uuid.uuid4().hex
         self.gesture_actions = self._load_gestures()
         self.gesture_events: list[dict] = []
@@ -95,6 +98,19 @@ class DisplayState:
         manifest = self.data_dir / "active.json"
         try:
             name = json.loads(manifest.read_text(encoding="utf-8"))["name"]
+            if Path(name).name != name:
+                return None
+            candidate = self.data_dir / name
+            if candidate.is_file() and candidate.suffix.lower() in SUPPORTED:
+                validate_media(candidate.read_bytes(), candidate.suffix)
+                return candidate
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        return None
+
+    def _load_manifest_file(self, manifest_name: str) -> Path | None:
+        try:
+            name = json.loads((self.data_dir / manifest_name).read_text(encoding="utf-8"))["name"]
             if Path(name).name != name:
                 return None
             candidate = self.data_dir / name
@@ -170,6 +186,10 @@ class DisplayState:
                 "instance_id": self.instance_id,
                 "default_name": self.active_file.name if self.active_file else None,
                 "default_video": bool(self.active_file and self.active_file.suffix.lower() == ".mp4"),
+                "boot_splash_configured": self.boot_splash_file.is_file(),
+                "shutdown_name": self.shutdown_file.name if self.shutdown_file else None,
+                "shutdown_video": bool(self.shutdown_file and self.shutdown_file.suffix.lower() == ".mp4"),
+                "shutting_down": self.shutting_down,
             }
 
     def _expire_game(self) -> None:
@@ -191,6 +211,14 @@ class DisplayState:
 
     def show_default(self) -> None:
         with self.lock:
+            self.shutting_down = False
+            self.game_title = None
+            self.game_media = {}
+            self.version += 1
+
+    def show_shutdown(self) -> None:
+        with self.lock:
+            self.shutting_down = True
             self.game_title = None
             self.game_media = {}
             self.version += 1
@@ -238,6 +266,69 @@ class DisplayState:
             unlink_if_exists(pending)
             unlink_if_exists(pending_manifest)
 
+    def save_boot_splash(self, data: bytes, extension: str) -> None:
+        extension = extension.lower()
+        validate_media(data, extension)
+        if extension not in (".jpg", ".jpeg", ".png"):
+            raise ValueError("Boot splash must be a PNG or JPEG image")
+        pending = self.data_dir / "boot-splash.pending"
+        try:
+            with pending.open("wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(pending, self.boot_splash_file)
+            with self.lock:
+                self.version += 1
+        finally:
+            unlink_if_exists(pending)
+
+    def save_shutdown(self, data: bytes, extension: str) -> str:
+        extension = extension.lower()
+        mime = validate_media(data, extension)
+        name = "shutdown-" + uuid.uuid4().hex + extension
+        target = self.data_dir / name
+        pending = self.data_dir / (name + ".pending")
+        manifest = self.data_dir / "shutdown.json"
+        pending_manifest = self.data_dir / "shutdown.json.pending"
+        try:
+            with pending.open("wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if mime == "video/mp4":
+                verify_mp4(pending)
+            os.replace(pending, target)
+            with pending_manifest.open("w", encoding="utf-8") as stream:
+                json.dump({"name": name}, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(pending_manifest, manifest)
+            with self.lock:
+                previous = self.shutdown_file
+                self.shutdown_file = target
+                self.version += 1
+            if previous and previous != target:
+                unlink_if_exists(previous)
+            return name
+        finally:
+            unlink_if_exists(pending)
+            unlink_if_exists(pending_manifest)
+
+    def shutdown_delay(self) -> float:
+        with self.lock:
+            selected = self.shutdown_file
+        if not selected or selected.suffix.lower() != ".mp4":
+            return 4.0
+        try:
+            result = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=nw=1:nk=1", str(selected)],
+                capture_output=True, text=True, timeout=5, check=False)
+            return min(30.0, max(4.0, float(result.stdout.strip()) + 1.0))
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            return 6.0
+
 
 class Server(ThreadingHTTPServer):
     daemon_threads = True
@@ -259,7 +350,8 @@ class Handler(BaseHTTPRequestHandler):
     def _authorized(self) -> bool:
         provided = self.headers.get("X-Arcade-Token", "")
         allowed = self.server.allowed_clients
-        return (not allowed or self.client_address[0] in allowed) and bool(provided) and hmac.compare_digest(provided, self.server.token)
+        return ((not allowed or self.client_address[0] in allowed) and bool(provided) and
+                hmac.compare_digest(provided.encode("utf-8"), self.server.token.encode("utf-8")))
 
     def _send(self, code: int, body: bytes, content_type: str) -> None:
         self.send_response(code)
@@ -324,6 +416,20 @@ class Handler(BaseHTTPRequestHandler):
                     mime = "image/svg+xml"
             self._send(200, data, mime)
             return
+        if path == "/ui/shutdown":
+            with self.server.state.lock:
+                selected = self.server.state.shutdown_file
+                if selected:
+                    try:
+                        data = selected.read_bytes()
+                        mime = SUPPORTED[selected.suffix.lower()]
+                    except OSError:
+                        selected = None
+                if not selected:
+                    data = (STATIC / "fallback.svg").read_bytes()
+                    mime = "image/svg+xml"
+            self._send(200, data, mime)
+            return
         if path.startswith("/ui/game/"):
             kind = path[len("/ui/game/"):]
             with self.server.state.lock:
@@ -353,6 +459,13 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, AttributeError, json.JSONDecodeError) as exc:
                 self._json(400, {"error": str(exc)})
             return
+        if path == "/ui/shutdown":
+            if not self._local():
+                self._json(403, {"error": "Local display only"})
+                return
+            self.server.state.show_shutdown()
+            self._json(200, {"ok": True})
+            return
         if not path.startswith("/v1/") or not self._authorized():
             self._json(401, {"error": "Unauthorized"})
             return
@@ -365,23 +478,24 @@ class Handler(BaseHTTPRequestHandler):
                 if not title:
                     raise ValueError("Game title is required")
                 media = {}
+                warnings = []
                 for kind in ("marquee", "controls", "box_art", "logo"):
                     item = payload.get(kind)
                     if not item:
                         continue
-                    if not isinstance(item, dict):
-                        raise ValueError("Game artwork must be an object")
-                    extension = str(item.get("extension", "")).lower()
                     try:
+                        if not isinstance(item, dict):
+                            raise ValueError("Artwork must be an object")
+                        extension = str(item.get("extension", "")).lower()
                         data = base64.b64decode(item["base64"], validate=True)
-                    except (binascii.Error, KeyError, TypeError) as exc:
-                        raise ValueError("Invalid game artwork") from exc
-                    mime = validate_media(data, extension)
-                    if mime == "video/mp4":
-                        raise ValueError("Game artwork must be an image")
-                    media[kind] = (data, mime)
+                        mime = validate_media(data, extension)
+                        if mime == "video/mp4":
+                            raise ValueError("Artwork must be an image")
+                        media[kind] = (data, mime)
+                    except (binascii.Error, KeyError, TypeError, ValueError) as exc:
+                        warnings.append({"kind": kind, "error": str(exc) or "Invalid artwork"})
                 self.server.state.set_game(title, media)
-                self._json(200, {"ok": True})
+                self._json(200, {"ok": True, "warnings": warnings})
                 return
             if path == "/v1/gesture-config":
                 payload = json.loads(self._body())
@@ -392,6 +506,16 @@ class Handler(BaseHTTPRequestHandler):
                 filename = Path(self.headers.get("X-File-Name", "")).name
                 extension = Path(filename).suffix.lower()
                 name = self.server.state.save_default(self._body(), extension)
+                self._json(200, {"ok": True, "name": name})
+                return
+            if path == "/v1/boot-splash":
+                filename = Path(self.headers.get("X-File-Name", "")).name
+                self.server.state.save_boot_splash(self._body(), Path(filename).suffix.lower())
+                self._json(200, {"ok": True})
+                return
+            if path == "/v1/shutdown-media":
+                filename = Path(self.headers.get("X-File-Name", "")).name
+                name = self.server.state.save_shutdown(self._body(), Path(filename).suffix.lower())
                 self._json(200, {"ok": True, "name": name})
                 return
             if path == "/v1/heartbeat":
@@ -412,7 +536,10 @@ class Handler(BaseHTTPRequestHandler):
                 if authorization.returncode != 0:
                     self._json(503, {"error": "Power authorization unavailable"})
                     return
-                threading.Timer(0.5, lambda: subprocess.run(
+                if action == "poweroff":
+                    self.server.state.show_shutdown()
+                delay = self.server.state.shutdown_delay() if action == "poweroff" else 0.5
+                threading.Timer(delay, lambda: subprocess.run(
                     ["systemctl", action], check=False
                 )).start()
             else:

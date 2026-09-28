@@ -6,7 +6,7 @@ let lastVersion = -1;
 let currentState = null;
 let view = "marquee";
 
-function makeMedia(url, video) {
+function makeMedia(url, video, loop = true) {
   const element = document.createElement(video ? "video" : "img");
   element.src = url;
   element.addEventListener("error", () => {
@@ -19,7 +19,7 @@ function makeMedia(url, video) {
   if (video) {
     element.autoplay = true;
     element.muted = true;
-    element.loop = true;
+    element.loop = loop;
     element.playsInline = true;
   } else {
     element.alt = "";
@@ -32,6 +32,10 @@ function render() {
   stage.replaceChildren();
   const state = currentState;
   const stamp = "?v=" + state.version;
+  if (state.shutting_down) {
+    stage.appendChild(makeMedia("/ui/shutdown" + stamp, state.shutdown_video, false));
+    return;
+  }
   if (!state.game_title) {
     stage.appendChild(makeMedia("/ui/default" + stamp, state.default_video));
     return;

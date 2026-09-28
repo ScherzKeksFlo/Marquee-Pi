@@ -15,12 +15,14 @@ Nach dem ersten Start per SSH anmelden und aktualisieren:
 ```sh
 sudo apt update
 sudo apt full-upgrade -y
-sudo apt install -y python3 ffmpeg chromium xserver-xorg xserver-xorg-input-libinput xinit x11-xserver-utils xauth polkitd openssl
+sudo apt install -y python3 ffmpeg fbi curl chromium xserver-xorg xserver-xorg-input-libinput xinit x11-xserver-utils xauth polkitd openssl
 sudo apt clean
 ```
 
 - `python3`: lokaler API-Server ohne zusätzliche Python-Pakete.
 - `ffmpeg`: `ffprobe` prüft hochgeladene MP4-Dateien auf H.264.
+- `fbi`: zeigt den statischen Boot-Splash im Linux-Framebuffer, bevor X11 bereit ist.
+- `curl`: aktiviert bei einem direkten Pi-Shutdown das hinterlegte Shutdown-Medium im lokalen Kiosk.
 - `chromium`: Vollbildanzeige der lokalen Webseite.
 - `xserver-xorg`, `xserver-xorg-input-libinput`, `xinit`, `xauth`: X11-Sitzung und Touch-Eingaben. Der getestete ft5x06-Touchscreen wurde über libinput erkannt.
 - `x11-xserver-utils`: `xset` schaltet Bildschirmschoner und DPMS ab.
@@ -48,8 +50,9 @@ Die folgenden Befehle im `pi`-Ordner einer lokalen Kopie dieses Repositorys auf 
 PI_USER=pi
 sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin arcadepi
 sudo install -d -o root -g root -m 755 /opt/arcade-pi-display
-sudo cp -a arcade_pi.py start-kiosk.sh static /opt/arcade-pi-display/
-sudo chmod 755 /opt/arcade-pi-display/start-kiosk.sh
+sudo cp -a arcade_pi.py start-kiosk.sh show-shutdown.sh static /opt/arcade-pi-display/
+sudo chmod 755 /opt/arcade-pi-display/start-kiosk.sh /opt/arcade-pi-display/show-shutdown.sh
+sudo install -o root -g root -m 755 configure-quiet-boot.sh /usr/local/sbin/marquee-pi-configure-quiet-boot
 sudo install -d -m 755 /etc/X11/xorg.conf.d /etc/chromium/policies/managed
 sudo install -m 644 xorg-modesetting.example.conf /etc/X11/xorg.conf.d/20-arcade-modesetting.conf
 sudo install -m 644 chromium-policy.example.json /etc/chromium/policies/managed/arcade-pi-display.json
@@ -65,8 +68,11 @@ Den ausgegebenen Token in `/etc/arcade-pi-display/config.json` eintragen (`sudo 
 sudo install -o root -g root -m 644 arcade-pi-display.service.example /etc/systemd/system/arcade-pi-display.service
 sed "s/REPLACE_WITH_PI_USER/$PI_USER/g" arcade-pi-kiosk.service.example | sudo tee /etc/systemd/system/arcade-pi-kiosk.service >/dev/null
 sudo chmod 644 /etc/systemd/system/arcade-pi-kiosk.service
+sudo install -o root -g root -m 644 marquee-pi-boot-splash.service.example /etc/systemd/system/marquee-pi-boot-splash.service
+sudo install -o root -g root -m 644 marquee-pi-shutdown-animation.service.example /etc/systemd/system/marquee-pi-shutdown-animation.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now arcade-pi-display.service arcade-pi-kiosk.service
+sudo systemctl enable --now arcade-pi-display.service arcade-pi-kiosk.service marquee-pi-shutdown-animation.service
+sudo systemctl enable marquee-pi-boot-splash.service
 ```
 
 Die Kiosk-Vorlage startet auch auf der Lite-Edition (`multi-user.target`). `start-kiosk.sh` setzt den X11-Bildschirmschoner auf Timeout 0, deaktiviert DPMS und nutzt Software-Rendering, um die GPU des Pi 3 B+ zu entlasten. Die Xorg-Konfiguration wählt nur den `modesetting`-Treiber für DSI und verhindert einen zweiten `fbdev`-Bildschirm. Die Chromium-Richtlinie deaktiviert die Übersetzungsleiste. Prüfen mit:
@@ -76,6 +82,33 @@ systemctl is-active arcade-pi-display arcade-pi-kiosk
 sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xset q
 sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr --current
 ```
+
+## Boot-Splash und stiller Systemstart
+
+Das Windows-Tool lädt den Boot-Splash später über **Medien verwalten… > Als Boot-Splash** hoch. Er muss ein PNG oder JPEG sein und wird als `/var/lib/arcade-pi-display/boot-splash` gespeichert. Bis ein eigenes Bild gewählt wurde, kann beispielsweise ein PNG manuell an diese Stelle kopiert werden:
+
+```sh
+sudo install -o arcadepi -g arcadepi -m 640 boot.png /var/lib/arcade-pi-display/boot-splash
+```
+
+Anschließend den normalen Konsolentext ausblenden. Das Skript sichert die ursprüngliche Kernel-Befehlszeile einmalig als `/boot/firmware/cmdline.txt.marquee-pi-before-quiet-boot`, ergänzt die leisen Startoptionen und deaktiviert den normalen Getty auf tty1. `console=tty1` bleibt bewusst erhalten, damit ein früher Boot- oder Dateisystemfehler weiterhin sichtbar bleibt:
+
+```sh
+sudo marquee-pi-configure-quiet-boot
+sudo reboot
+```
+
+Die serielle Konsole und tty1 bleiben für die Diagnose erhalten. Ganz frühe Firmwareausgaben vor dem Linux-Framebuffer sowie tatsächliche Bootfehler können deshalb sichtbar sein. Sobald `/dev/fb0` verfügbar ist, zeigt `marquee-pi-boot-splash.service` das statische Bild; X11 übernimmt danach mit dem Standardmedium.
+
+## Medien über das Windows-Tool einrichten
+
+Im Windows-Tray **Medien verwalten…** öffnen, eine Datei hinzufügen und eine Rolle wählen:
+
+- **Als Standard:** JPG, PNG, GIF, WebP oder H.264-MP4; erscheint ohne laufendes Spiel.
+- **Als Boot-Splash:** PNG oder JPEG; erscheint ab dem nächsten Pi-Start vor dem Kiosk.
+- **Als Shutdown-Medium:** JPG, PNG, GIF, WebP oder H.264-MP4; erscheint vor dem Ausschalten.
+
+Ein Shutdown-Video spielt einmal. Der Pi wartet auf die mit `ffprobe` ermittelte Dauer plus eine Sekunde, mindestens vier und höchstens 30 Sekunden. Wird der Pi direkt per `systemctl poweroff` heruntergefahren, aktiviert `marquee-pi-shutdown-animation.service` die lokale Anzeige, bevor API und Kiosk beendet werden. Beim Shutdown aus dem Windows-Tool oder während des Windows-Shutdowns wechselt die API bereits vor dem eigentlichen Poweroff auf das Medium.
 
 ## Display testen und zurücksetzen
 
@@ -143,11 +176,11 @@ Die Prüfung muss für den Dienstbenutzer erfolgen; beide `pkcheck`-Aufrufe müs
 
 ## Funktionstest
 
-1. Ohne Windows-Verbindung neu booten: gespeichertes Standardbild oder Video erscheint automatisch.
+1. Im Windows-Tool ein statisches Boot-Bild hochladen. Ohne Windows-Verbindung neu booten: Boot-Splash und danach das gespeicherte Standardbild oder Video erscheinen automatisch; dazwischen wird kein normaler Konsolentext gezeigt.
 2. Prüfen, dass `xset q` `timeout: 0` und `DPMS is Disabled` meldet, `xrandr` `DSI-1 connected 800x480` anzeigt und die Anzeige mindestens zehn Minuten sichtbar bleibt.
 3. Windows-Tool mit Pi-IP und Token verbinden. Spiel in LaunchBox/Big Box starten: passendes Marquee erscheint.
 4. Auf das Display tippen: Bei vorhandener Steuerungsgrafik zwischen Marquee und Control Panel wechseln. Die vier Wischgesten werden im Windows-Tool konfiguriert; die gewählte Bildansicht erscheint sofort.
 5. Spiel verlassen: Standardmedium erscheint. Pi-Neustart über das Tray-Menü testen; Medium erscheint nach dem Booten erneut.
-6. Pi-Shutdown über das Tray-Menü erst nach allen anderen Tests durchführen.
+6. Ein Shutdown-Medium hochladen. Pi-Shutdown über das Tray-Menü erst nach allen anderen Tests durchführen: Medium erscheint vollständig beziehungsweise höchstens 30 Sekunden, anschließend ist der Pi per Ping/SSH nicht mehr erreichbar.
 
 Bei Fehlern `journalctl -u arcade-pi-display -u arcade-pi-kiosk -b --no-pager` lesen. Für eine Community-Installation eigene IP-Adressen, Displayausrichtung, Benutzername und Standardmedium anpassen.
