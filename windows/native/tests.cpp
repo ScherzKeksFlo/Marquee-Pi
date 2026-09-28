@@ -4,6 +4,9 @@
 #include <iostream>
 int main() {
     using namespace mini;
+    static_assert(MARQUEE_PI_ARTWORK_BUDGET_BYTES == 24379392);
+    static_assert((MARQUEE_PI_ARTWORK_BUDGET_BYTES * 4 + 2) / 3 +
+                  MARQUEE_PI_JSON_HEADROOM_BYTES <= MARQUEE_PI_MAX_REQUEST_BYTES);
     auto parsed = parse(R"({"Action":"game","Title":"P\u00e4c Man","MarqueePath":"C:\\art.png","n":42,"a":[true,null]})");
     assert(parsed.get("Title").value() == (std::string("P") + "\xc3\xa4" + "c Man"));
     assert(parsed.get("n").integer() == 42);

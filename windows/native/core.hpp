@@ -6,6 +6,11 @@
 #include <vector>
 #include "json.hpp"
 
+inline constexpr size_t MARQUEE_PI_MAX_REQUEST_BYTES = 32 * 1024 * 1024;
+inline constexpr size_t MARQUEE_PI_JSON_HEADROOM_BYTES = 1024 * 1024;
+inline constexpr size_t MARQUEE_PI_ARTWORK_BUDGET_BYTES =
+    (MARQUEE_PI_MAX_REQUEST_BYTES - MARQUEE_PI_JSON_HEADROOM_BYTES) * 3 / 4;
+
 struct Settings {
     std::wstring piUrl;
     std::wstring token;

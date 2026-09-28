@@ -4,6 +4,7 @@
 #include <winhttp.h>
 #include <shlobj.h>
 #include <wincrypt.h>
+#include <wincodec.h>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -11,9 +12,21 @@
 #include <stdexcept>
 #include <mutex>
 #include <cwctype>
+#include <cmath>
 
 namespace fs = std::filesystem;
 namespace {
+template <typename T> struct ComPtr {
+    T* ptr = nullptr;
+    ~ComPtr() { if (ptr) ptr->Release(); }
+    T** out() { return &ptr; }
+    T* operator->() const { return ptr; }
+};
+struct ComScope {
+    HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    ~ComScope() { if (result == S_OK || result == S_FALSE) CoUninitialize(); }
+    bool available() const { return SUCCEEDED(result) || result == RPC_E_CHANGED_MODE; }
+};
 struct WinHandle {
     HINTERNET handle = nullptr;
     explicit WinHandle(HINTERNET h) : handle(h) {}
@@ -146,6 +159,51 @@ std::string base64(const std::string& data) {
     while (!result.empty() && result.back() == '\0') result.pop_back();
     return result;
 }
+std::string scaledArtwork(const std::wstring& path, const std::string& ext, const std::string& original) {
+    ComScope com;
+    if (!com.available()) return original;
+    ComPtr<IWICImagingFactory> factory;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(factory.out())))) return original;
+    ComPtr<IWICBitmapDecoder> decoder;
+    if (FAILED(factory->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ,
+                                                  WICDecodeMetadataCacheOnLoad, decoder.out()))) return original;
+    ComPtr<IWICBitmapFrameDecode> source;
+    if (FAILED(decoder->GetFrame(0, source.out()))) return original;
+    UINT width = 0, height = 0;
+    if (FAILED(source->GetSize(&width, &height)) || !width || !height || std::max(width, height) <= 1600) return original;
+    const double scale = 1600.0 / double(std::max(width, height));
+    const UINT scaledWidth = std::max(1u, UINT(std::lround(width * scale)));
+    const UINT scaledHeight = std::max(1u, UINT(std::lround(height * scale)));
+    ComPtr<IWICBitmapScaler> scaler;
+    if (FAILED(factory->CreateBitmapScaler(scaler.out())) ||
+        FAILED(scaler->Initialize(source.ptr, scaledWidth, scaledHeight, WICBitmapInterpolationModeFant))) return original;
+    ComPtr<IStream> stream;
+    if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, stream.out()))) return original;
+    ComPtr<IWICBitmapEncoder> encoder;
+    const CLSID encoderId = ext == ".png" ? CLSID_WICPngEncoder : CLSID_WICJpegEncoder;
+    if (FAILED(factory->CreateEncoder(encoderId, nullptr, encoder.out())) ||
+        FAILED(encoder->Initialize(stream.ptr, WICBitmapEncoderNoCache))) return original;
+    ComPtr<IWICBitmapFrameEncode> frame;
+    if (FAILED(encoder->CreateNewFrame(frame.out(), nullptr)) || FAILED(frame->Initialize(nullptr)) ||
+        FAILED(frame->SetSize(scaledWidth, scaledHeight))) return original;
+    WICPixelFormatGUID format = ext == ".png" ? GUID_WICPixelFormat32bppBGRA : GUID_WICPixelFormat24bppBGR;
+    if (FAILED(frame->SetPixelFormat(&format))) return original;
+    ComPtr<IWICFormatConverter> converter;
+    if (FAILED(factory->CreateFormatConverter(converter.out())) ||
+        FAILED(converter->Initialize(scaler.ptr, format, WICBitmapDitherTypeNone, nullptr, 0,
+                                     WICBitmapPaletteTypeCustom)) ||
+        FAILED(frame->WriteSource(converter.ptr, nullptr)) || FAILED(frame->Commit()) || FAILED(encoder->Commit()))
+        return original;
+    HGLOBAL memory = nullptr;
+    if (FAILED(GetHGlobalFromStream(stream.ptr, &memory)) || !memory) return original;
+    const SIZE_T size = GlobalSize(memory);
+    const void* bytes = GlobalLock(memory);
+    if (!bytes || !size) return original;
+    std::string result(static_cast<const char*>(bytes), static_cast<const char*>(bytes) + size);
+    GlobalUnlock(memory);
+    return result;
+}
 mini::Json artwork(const std::wstring& path, size_t& budget) {
     if (path.empty() || !fileExists(path)) return {};
     std::string ext = lower(toUtf8(fs::path(path).extension().wstring()));
@@ -154,6 +212,7 @@ mini::Json artwork(const std::wstring& path, size_t& budget) {
         auto length = fs::file_size(fs::path(path));
         if (length > 20 * 1024 * 1024 || length > budget) return {};
         std::string bytes = readFile(path);
+        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") bytes = scaledArtwork(path, ext, bytes);
         if (bytes.size() > budget) return {};
         budget -= bytes.size();
         mini::Json item = mini::Json::object();
@@ -451,7 +510,7 @@ HttpResult piRequest(const Settings& s, const std::wstring& method, const std::w
     return result;
 }
 std::string gamePayload(const GameMessage& game) {
-    size_t budget = 23 * 1024 * 1024;
+    size_t budget = MARQUEE_PI_ARTWORK_BUDGET_BYTES;
     mini::Json body = mini::Json::object();
     body["title"] = mini::Json::str(toUtf8(game.title.empty() ? L"Game" : game.title));
     body["marquee"] = artwork(game.marquee, budget);
