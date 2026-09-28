@@ -79,7 +79,26 @@ sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr
 
 ## Schwarzes DSI-Display auf dem Pi 3 B+
 
-Auf dem getesteten Pi 3 B+ mit Trixie und Kernel 6.18 blieb das 7-Zoll-Display nach dem Booten beleuchtet, aber schwarz, obwohl `xrandr` `DSI-1 connected` meldete. Der Firmware-Startbildschirm erschien kurz. Hier funktionierte der mitgelieferte FKMS-Treiber:
+Zuerst prüfen, ob der Bildschirm überhaupt erkannt wurde:
+
+```sh
+ls /sys/class/drm/
+ls /dev/input/
+sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr --current
+```
+
+Fehlt `card0-DSI-1` und erscheint stattdessen nur `Composite-1`, wurde das Display beim Booten nicht automatisch erkannt. Auf dem Testgerät trat dies auch nach einem vollständigen Stromzyklus auf. Die feste Konfiguration für das originale Raspberry-Pi-7-Zoll-Touchdisplay stellte DSI und Touch wieder her. Vorher `/boot/firmware/config.txt` sichern und darin diese Werte setzen:
+
+```ini
+display_auto_detect=0
+dtoverlay=vc4-kms-v3d
+dtoverlay=vc4-kms-dsi-7inch
+disable_fw_kms_setup=1
+```
+
+Vorhandene widersprechende Zeilen ersetzen, nicht doppelt eintragen. Nach `sudo reboot` müssen `card0-DSI-1`, ein Touch-Eingabegerät und `DSI-1 connected` in `xrandr` erscheinen. Bleiben sie aus, Stromversorgung und DSI-Flachbandkabel bei vollständig getrennter Stromversorgung prüfen. Die feste Overlay-Zeile gilt für das originale 800 × 480 Touch Display; bei anderen Panels das passende Overlay verwenden.
+
+Ein anderes Fehlerbild trat auf demselben Pi 3 B+ mit Trixie und Kernel 6.18 auf: Das Display wurde als `DSI-1 connected` erkannt und zeigte kurz den Firmware-Startbildschirm, blieb danach aber beleuchtet und schwarz. In diesem Fall funktionierte nach Wiederherstellung der gesicherten Bootdatei der mitgelieferte FKMS-Treiber:
 
 ```ini
 # /boot/firmware/config.txt
@@ -87,7 +106,7 @@ dtoverlay=vc4-fkms-v3d
 #disable_fw_kms_setup=1
 ```
 
-Die vorhandene Zeile `dtoverlay=vc4-kms-v3d` ersetzen und `disable_fw_kms_setup=1` auskommentieren; die Datei vorher sichern. Nach einem Neustart muss `xrandr` `DSI-1 connected` zeigen. FKMS kann zusätzlich `Composite-1` aktivieren; `start-kiosk.sh` schaltet diesen Ausgang automatisch ab, wenn DSI angeschlossen ist. Diesen Workaround nur bei dem beschriebenen Fehler einsetzen, da andere Pi-Modelle und Displays mit KMS funktionieren können.
+Die vorhandene Zeile `dtoverlay=vc4-kms-v3d` ersetzen und `disable_fw_kms_setup=1` auskommentieren; die Datei vorher sichern. Nach einem Neustart muss `xrandr` `DSI-1 connected` zeigen. FKMS kann zusätzlich `Composite-1` aktivieren; `start-kiosk.sh` schaltet diesen Ausgang automatisch ab, wenn DSI angeschlossen ist. Auf dem Testgerät zeigte die feste KMS-Konfiguration nach dem Erkennungsfehler zwar wieder DSI und Touch, das Bild blieb aber schwarz. Nach Rückkehr zur gesicherten FKMS-Konfiguration und einem weiteren Neustart lief die Standardanimation wieder. Ein erneuter Kaltstart reproduzierte den Erkennungsfehler: Mit FKMS fehlten DSI und Touch zunächst wieder. KMS mit festem Overlay erkannte beide, zeigte auf dem realen Display aber selbst auf der Textkonsole kein Bild. Nach Rückkehr zu FKMS per Warmstart war DSI wieder aktiv. Für dieses Gerät ist der Kaltstart damit noch nicht zuverlässig gelöst. Diesen Workaround nur bei dem beschriebenen Fehler einsetzen, da andere Pi-Modelle und Displays mit KMS funktionieren können.
 
 ## Standardvideo auf einem Pi 3 B+
 
