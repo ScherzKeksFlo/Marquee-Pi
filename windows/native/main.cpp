@@ -151,12 +151,6 @@ static std::wstring recentShutdownType(FILETIME startedUtc) {
     EvtClose(query);
     return result;
 }
-static bool isPowerOff(std::wstring value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](wchar_t c) { return std::towlower(c); });
-    return value == L"shutdown" || value == L"power off" ||
-           value == L"herunterfahren" || value == L"ausschalten";
-}
-
 class App {
 public:
     HWND hwnd = nullptr, settingsWindow = nullptr, mediaWindow = nullptr;
@@ -460,7 +454,7 @@ void App::pipeLoop() {
 }
 void App::onShutdown() {
     std::wstring type = recentShutdownType(startedUtc);
-    if (!isPowerOff(type)) {
+    if (!isPowerOffType(type)) {
         logShutdown(L"Pi bleibt eingeschaltet; Windows-Typ: " + (type.empty() ? L"unbekannt" : type));
         return;
     }

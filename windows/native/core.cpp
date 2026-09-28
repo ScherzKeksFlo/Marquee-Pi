@@ -408,6 +408,20 @@ bool isUser32ShutdownEvent(const std::wstring& xml) {
            xml.find(L"<Provider Name='Microsoft-Windows-User32'") != std::wstring::npos ||
            xml.find(L"<Provider Name=\"Microsoft-Windows-User32\"") != std::wstring::npos;
 }
+bool isPowerOffType(std::wstring value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](wchar_t c) { return std::towlower(c); });
+    const size_t first = value.find_first_not_of(L" \t\r\n");
+    if (first == std::wstring::npos) return false;
+    value = value.substr(first, value.find_last_not_of(L" \t\r\n") - first + 1);
+    static const std::vector<std::wstring> restartTerms = {
+        L"reboot", L"restart", L"neu starten", L"neustart", L"redémarrer", L"redemarrer",
+        L"reiniciar", L"riavvia", L"herstarten", L"перезагрузка"
+    };
+    for (const auto& term : restartTerms)
+        if (value.find(term) != std::wstring::npos) return false;
+    return value == L"shutdown" || value == L"power off" ||
+           value == L"herunterfahren" || value == L"ausschalten";
+}
 bool sendRetroArchHotkey(const std::wstring& text) {
     auto keys = hotkeyKeys(text);
     if (keys.empty()) return false;

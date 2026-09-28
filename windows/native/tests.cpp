@@ -27,6 +27,12 @@ int main() {
     assert(validHotkey(L"Ctrl+Shift+F1"));
     assert(!validHotkey(L"Ctrl+Ctrl+F1"));
     assert(!validHotkey(L"garbage"));
+    assert(isPowerOffType(L" Shutdown "));
+    assert(isPowerOffType(L"HERUNTERFAHREN"));
+    assert(!isPowerOffType(L"restart"));
+    assert(!isPowerOffType(L"Computer neu starten"));
+    assert(!isPowerOffType(L"shutdown and restart"));
+    assert(!isPowerOffType(L"arrêter"));
     assert(isUser32ShutdownEvent(L"<Event><System><Provider Name='User32' Guid='{x}'/></System><EventData><Data Name='param5'>Herunterfahren</Data></EventData></Event>"));
     assert(isUser32ShutdownEvent(L"<Provider Name=\"User32\"/>"));
     assert(!isUser32ShutdownEvent(L"<Provider Name='Kernel-Power'/>"));

@@ -55,6 +55,7 @@ bool autostartEnabled();
 void setAutostart(bool enabled);
 bool validHotkey(const std::wstring& text);
 bool isUser32ShutdownEvent(const std::wstring& xml);
+bool isPowerOffType(std::wstring value);
 bool sendRetroArchHotkey(const std::wstring& text);
 bool sendRetroArchNetworkCommand(int port);
 HttpResult piRequest(const Settings& settings, const std::wstring& method,
