@@ -1,6 +1,8 @@
 # Netzwerkprotokoll v1
 
-Der Pi stellt eine HTTP-API auf dem konfigurierten Port bereit. Windows sendet bei jedem `/v1`-Aufruf den Header `X-Arcade-Token`. Ein optionales `allowed_client_ips` begrenzt zusätzlich die Windows-Adressen; eine leere Liste bedeutet keine IP-Filterung. Die Vollbildseite unter `/ui/` ist nur von `127.0.0.1` bzw. `::1` erreichbar. Die direkte Verbindung sollte nicht ins öffentliche Netz weitergeleitet werden.
+Der Pi stellt eine HTTP-API auf dem konfigurierten Port bereit. Windows sendet bei jedem `/v1`-Aufruf den Header `X-Arcade-Token`. HTTP verschlüsselt weder Medien noch Token; ein Gerät im selben Netz könnte den Token mitlesen. Die API ist daher ausschließlich für eine direkte Punkt-zu-Punkt-Verbindung oder ein vertrauenswürdiges lokales Netz vorgesehen und darf nicht ins Internet weitergeleitet werden.
+
+`allowed_client_ips` begrenzt die zulässigen Windows-Adressen; eine leere Liste bedeutet keine IP-Filterung. Empfohlen ist eine Liste mit der festen IP des Arcade-PCs. Alternativ oder zusätzlich wird `bind` auf die Pi-IP der direkten Ethernet-Schnittstelle gesetzt, damit der Dienst nicht an WLAN oder anderen Netzen lauscht. Die Vollbildseite unter `/ui/` ist unabhängig davon nur von `127.0.0.1` bzw. `::1` erreichbar.
 
 ## Operationen
 

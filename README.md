@@ -24,6 +24,8 @@ Ein Begleitbildschirm für LaunchBox/Big Box auf Windows 11 und einen Raspberry 
 
 Das portable Windows-Paket enthält EXE, Plugin-DLL, Anleitung und Lizenz. IP-Adressen, Installationspfade, Zugangsdaten und eigene Medien werden nicht fest eingebaut. Spielgrafiken und LaunchBox-Binärdateien werden nicht mitgeliefert.
 
+Die Windows-Pi-Verbindung verwendet HTTP. Auch der API-Token wird dabei unverschlüsselt übertragen. Marquee-Pi ist deshalb für eine direkte Punkt-zu-Punkt-Verbindung oder ein vertrauenswürdiges lokales Netz vorgesehen und darf nicht ins Internet weitergeleitet werden. Auf dem Pi sollte `allowed_client_ips` auf die IP des Arcade-PCs begrenzt oder `bind` auf die Adresse der direkten Netzwerkschnittstelle gesetzt werden.
+
 ## Schnellstart
 
 1. [Raspberry Pi OS Lite installieren und Pi-Dienste einrichten](pi/INSTALL.md). Ein eigenes API-Token erzeugen und in der Pi-Konfiguration hinterlegen.

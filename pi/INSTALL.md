@@ -42,6 +42,8 @@ sudo nmcli connection up '<ETHERNET-PROFIL>'
 
 Bei anderer Netzstruktur die Adressen entsprechend ändern. WLAN kann parallel für Updates und SSH verwendet werden. Die API-Zugriffsliste in `config.json` sollte nur die Windows-IP enthalten.
 
+Die API verwendet bewusst einfaches HTTP; der Header mit dem API-Token ist auf der Leitung nicht verschlüsselt. Port 8765 daher weder am Router freigeben noch aus dem Internet erreichbar machen. Für die direkte Verbindung `"bind": "10.0.0.10"` und `"allowed_client_ips": ["10.0.0.1"]` verwenden. Soll die API zusätzlich über WLAN erreichbar sein, kann `bind` auf `0.0.0.0` bleiben, aber `allowed_client_ips` muss alle erlaubten Windows-Adressen ausdrücklich aufzählen. Firewallregeln können den Zugriff zusätzlich auf die direkte Schnittstelle begrenzen.
+
 ## Anwendung und Dienste
 
 Die folgenden Befehle im `pi`-Ordner einer lokalen Kopie dieses Repositorys auf dem Pi ausführen. Für die Kiosk-Anmeldung muss ein normaler Benutzer vorhanden sein; hier wird er `pi` genannt. Bei anderem Namen `PI_USER` entsprechend setzen.
