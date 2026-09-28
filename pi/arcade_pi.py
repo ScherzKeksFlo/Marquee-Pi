@@ -8,6 +8,7 @@ import base64
 import binascii
 import hmac
 import json
+import math
 import mimetypes
 import os
 from pathlib import Path
@@ -54,17 +55,28 @@ def validate_media(data: bytes, extension: str) -> str:
     return SUPPORTED[extension]
 
 
-def verify_mp4(path: Path) -> None:
+def verify_mp4(path: Path) -> float | None:
     probe = shutil.which("ffprobe")
     if not probe:
         raise ValueError("ffprobe is required for MP4 uploads")
     result = subprocess.run(
         [probe, "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1", str(path)],
+         "-show_entries", "stream=codec_name:format=duration", "-of", "json", str(path)],
         capture_output=True, text=True, timeout=15, check=False,
     )
-    if result.returncode != 0 or result.stdout.strip() != "h264":
+    try:
+        details = json.loads(result.stdout)
+        codec = details["streams"][0]["codec_name"]
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+        codec = None
+        details = {}
+    if result.returncode != 0 or codec != "h264":
         raise ValueError("MP4 must contain an H.264 video stream")
+    try:
+        duration = float(details["format"]["duration"])
+        return duration if math.isfinite(duration) and duration >= 0 else None
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def unlink_if_exists(path: Path) -> None:
@@ -81,9 +93,9 @@ class DisplayState:
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.timeout_seconds = timeout_seconds
-        self.active_file = self._load_active_file()
+        self.active_file, _ = self._load_media_slot("active.json")
         self.boot_splash_file = self.data_dir / "boot-splash"
-        self.shutdown_file = self._load_manifest_file("shutdown.json")
+        self.shutdown_file, self.shutdown_duration = self._load_media_slot("shutdown.json")
         self.game_title = None
         self.game_media: dict[str, tuple[bytes, str]] = {}
         self.last_heartbeat = 0.0
@@ -94,32 +106,22 @@ class DisplayState:
         self.gesture_events: list[dict] = []
         self.next_gesture_id = 1
 
-    def _load_active_file(self) -> Path | None:
-        manifest = self.data_dir / "active.json"
+    def _load_media_slot(self, manifest_name: str) -> tuple[Path | None, float | None]:
         try:
-            name = json.loads(manifest.read_text(encoding="utf-8"))["name"]
+            manifest = json.loads((self.data_dir / manifest_name).read_text(encoding="utf-8"))
+            name = manifest["name"]
             if Path(name).name != name:
-                return None
+                return None, None
             candidate = self.data_dir / name
             if candidate.is_file() and candidate.suffix.lower() in SUPPORTED:
                 validate_media(candidate.read_bytes(), candidate.suffix)
-                return candidate
+                duration = manifest.get("duration")
+                if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration < 0:
+                    duration = None
+                return candidate, duration
         except (OSError, ValueError, KeyError, TypeError):
             pass
-        return None
-
-    def _load_manifest_file(self, manifest_name: str) -> Path | None:
-        try:
-            name = json.loads((self.data_dir / manifest_name).read_text(encoding="utf-8"))["name"]
-            if Path(name).name != name:
-                return None
-            candidate = self.data_dir / name
-            if candidate.is_file() and candidate.suffix.lower() in SUPPORTED:
-                validate_media(candidate.read_bytes(), candidate.suffix)
-                return candidate
-        except (OSError, ValueError, KeyError, TypeError):
-            pass
-        return None
+        return None, None
 
     def _load_gestures(self) -> dict[str, str]:
         try:
@@ -204,6 +206,7 @@ class DisplayState:
 
     def set_game(self, title: str, media: dict[str, tuple[bytes, str]]) -> None:
         with self.lock:
+            self.shutting_down = False
             self.game_title = title
             self.game_media = media
             self.last_heartbeat = time.monotonic()
@@ -224,37 +227,51 @@ class DisplayState:
             self.version += 1
 
     def reload(self) -> None:
+        active_file, _ = self._load_media_slot("active.json")
         with self.lock:
-            self.active_file = self._load_active_file()
+            self.active_file = active_file
             self.version += 1
 
     def save_default(self, data: bytes, extension: str) -> str:
         with self.upload_lock:
-            return self._save_default_impl(data, extension)
+            return self._save_media_slot(
+                data, extension, "active.json", "default", "active_file")
 
-    def _save_default_impl(self, data: bytes, extension: str) -> str:
+    def _save_media_slot(self, data: bytes, extension: str, manifest_name: str,
+                         prefix: str, file_attribute: str,
+                         duration_attribute: str | None = None,
+                         allowed_extensions=frozenset(SUPPORTED)) -> str:
+        extension = extension.lower()
+        if extension not in allowed_extensions:
+            raise ValueError("Unsupported media type for this slot")
         mime = validate_media(data, extension)
-        name = "default-" + uuid.uuid4().hex + extension.lower()
+        name = prefix + "-" + uuid.uuid4().hex + extension
         target = self.data_dir / name
         pending = self.data_dir / (name + ".pending")
-        manifest = self.data_dir / "active.json"
-        pending_manifest = self.data_dir / "active.json.pending"
+        manifest = self.data_dir / manifest_name
+        pending_manifest = self.data_dir / (manifest_name + ".pending")
         try:
             with pending.open("wb") as stream:
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
+            duration = None
             if mime == "video/mp4":
-                verify_mp4(pending)
+                duration = verify_mp4(pending)
             os.replace(pending, target)
+            manifest_data = {"name": name}
+            if duration_attribute and duration is not None:
+                manifest_data["duration"] = duration
             with pending_manifest.open("w", encoding="utf-8") as stream:
-                json.dump({"name": name}, stream)
+                json.dump(manifest_data, stream)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(pending_manifest, manifest)
             with self.lock:
-                previous = self.active_file
-                self.active_file = target
+                previous = getattr(self, file_attribute)
+                setattr(self, file_attribute, target)
+                if duration_attribute:
+                    setattr(self, duration_attribute, duration)
                 self.version += 1
             if previous and previous != target:
                 try:
@@ -267,6 +284,10 @@ class DisplayState:
             unlink_if_exists(pending_manifest)
 
     def save_boot_splash(self, data: bytes, extension: str) -> None:
+        with self.upload_lock:
+            self._save_boot_splash(data, extension)
+
+    def _save_boot_splash(self, data: bytes, extension: str) -> None:
         extension = extension.lower()
         validate_media(data, extension)
         if extension not in (".jpg", ".jpeg", ".png"):
@@ -284,50 +305,20 @@ class DisplayState:
             unlink_if_exists(pending)
 
     def save_shutdown(self, data: bytes, extension: str) -> str:
-        extension = extension.lower()
-        mime = validate_media(data, extension)
-        name = "shutdown-" + uuid.uuid4().hex + extension
-        target = self.data_dir / name
-        pending = self.data_dir / (name + ".pending")
-        manifest = self.data_dir / "shutdown.json"
-        pending_manifest = self.data_dir / "shutdown.json.pending"
-        try:
-            with pending.open("wb") as stream:
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
-            if mime == "video/mp4":
-                verify_mp4(pending)
-            os.replace(pending, target)
-            with pending_manifest.open("w", encoding="utf-8") as stream:
-                json.dump({"name": name}, stream)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(pending_manifest, manifest)
-            with self.lock:
-                previous = self.shutdown_file
-                self.shutdown_file = target
-                self.version += 1
-            if previous and previous != target:
-                unlink_if_exists(previous)
-            return name
-        finally:
-            unlink_if_exists(pending)
-            unlink_if_exists(pending_manifest)
+        with self.upload_lock:
+            return self._save_media_slot(
+                data, extension, "shutdown.json", "shutdown", "shutdown_file",
+                "shutdown_duration")
 
     def shutdown_delay(self) -> float:
         with self.lock:
             selected = self.shutdown_file
+            duration = self.shutdown_duration
         if not selected or selected.suffix.lower() != ".mp4":
             return 4.0
-        try:
-            result = subprocess.run(
-                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                 "-of", "default=nw=1:nk=1", str(selected)],
-                capture_output=True, text=True, timeout=5, check=False)
-            return min(30.0, max(4.0, float(result.stdout.strip()) + 1.0))
-        except (OSError, ValueError, subprocess.TimeoutExpired):
+        if duration is None:
             return 6.0
+        return min(30.0, max(4.0, duration + 1.0))
 
 
 class Server(ThreadingHTTPServer):

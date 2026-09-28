@@ -5,6 +5,7 @@ import tempfile
 import threading
 import unittest
 import http.client
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -13,6 +14,7 @@ from arcade_pi import DisplayState, Server
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lZkAAAAASUVORK5CYII="
 )
+MP4 = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 24
 
 
 class StateTests(unittest.TestCase):
@@ -28,6 +30,52 @@ class StateTests(unittest.TestCase):
             self.assertFalse(restored.describe()["shutting_down"])
             restored.show_shutdown()
             self.assertTrue(restored.describe()["shutting_down"])
+            restored.set_game("New game", {})
+            self.assertFalse(restored.describe()["shutting_down"])
+
+    def test_shutdown_duration_is_cached_and_legacy_manifest_is_supported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            state = DisplayState(data_dir, 60)
+            with patch("arcade_pi.verify_mp4", return_value=8.5) as verify:
+                name = state.save_shutdown(MP4, ".mp4")
+            verify.assert_called_once()
+            manifest_path = data_dir / "shutdown.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest, {"name": name, "duration": 8.5})
+            restored = DisplayState(data_dir, 60)
+            self.assertEqual(restored.shutdown_delay(), 9.5)
+
+            manifest_path.write_text(json.dumps({"name": name}), encoding="utf-8")
+            legacy = DisplayState(data_dir, 60)
+            self.assertEqual(legacy.shutdown_delay(), 6.0)
+
+    def test_boot_and_shutdown_uploads_use_lock_and_ignore_old_file_delete_error(self):
+        class CountingLock:
+            def __init__(self):
+                self.entries = 0
+            def __enter__(self):
+                self.entries += 1
+            def __exit__(self, *_):
+                return False
+
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            state = DisplayState(data_dir, 60)
+            lock = CountingLock()
+            state.upload_lock = lock
+            state.save_boot_splash(PNG, ".png")
+            first = state.save_shutdown(PNG, ".png")
+
+            def fail_only_for_previous(path):
+                if path == data_dir / first:
+                    raise OSError("simulated delete error")
+
+            with patch("arcade_pi.unlink_if_exists", side_effect=fail_only_for_previous):
+                replacement = state.save_shutdown(PNG, ".png")
+            self.assertNotEqual(replacement, first)
+            self.assertEqual(state.shutdown_file.name, replacement)
+            self.assertEqual(lock.entries, 3)
 
     def test_default_survives_restart_and_bad_upload(self):
         with tempfile.TemporaryDirectory() as directory:
