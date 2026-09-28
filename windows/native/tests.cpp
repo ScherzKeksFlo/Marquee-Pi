@@ -12,6 +12,12 @@ int main() {
     assert(parsed.get("n").integer() == 42);
     assert(parsed.get("a").items.size() == 2);
     assert(parse(parsed.dump()).get("Title").value() == parsed.get("Title").value());
+    auto decimals = parse(R"({"ratio":1.25,"small":-2e-3,"large":4E+2})");
+    assert(decimals.get("ratio").real() == 1.25);
+    assert(decimals.get("small").real() == -0.002);
+    assert(decimals.get("large").real() == 400.0);
+    assert(decimals.get("ratio").integer(-1) == -1);
+    assert(parse(decimals.dump()).get("small").real() == -0.002);
     auto game = parseGameMessage(parsed.dump());
     assert(game.action == "game" && game.title == L"P\u00e4c Man");
     auto warnings = gameWarnings(R"({"ok":true,"warnings":[{"kind":"marquee","error":"bad image"},{"kind":"logo","error":""},null]})");

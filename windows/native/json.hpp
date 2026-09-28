@@ -1,6 +1,7 @@
 #pragma once
 #include <cctype>
 #include <cstdint>
+#include <cmath>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -11,6 +12,9 @@ struct Json {
     enum Type { Null, Bool, Number, String, Array, Object } type = Null;
     bool boolean = false;
     int64_t number = 0;
+    double decimal = 0;
+    bool integral = false;
+    std::string number_text;
     std::string text;
     std::vector<Json> items;
     std::map<std::string, Json> members;
@@ -18,7 +22,18 @@ struct Json {
     static Json object() { Json j; j.type = Object; return j; }
     static Json array() { Json j; j.type = Array; return j; }
     static Json str(const std::string& s) { Json j; j.type = String; j.text = s; return j; }
-    static Json num(int64_t n) { Json j; j.type = Number; j.number = n; return j; }
+    static Json num(int64_t n) {
+        Json j; j.type = Number; j.number = n; j.decimal = double(n); j.integral = true;
+        j.number_text = std::to_string(n); return j;
+    }
+    static Json num(const std::string& source) {
+        Json j; j.type = Number; j.number_text = source; j.decimal = std::stod(source);
+        if (!std::isfinite(j.decimal)) throw std::runtime_error("JSON number out of range");
+        if (source.find_first_of(".eE") == std::string::npos) {
+            j.number = std::stoll(source); j.integral = true;
+        }
+        return j;
+    }
     static Json flag(bool b) { Json j; j.type = Bool; j.boolean = b; return j; }
     const Json& get(const std::string& key) const {
         static const Json empty;
@@ -27,7 +42,8 @@ struct Json {
     }
     Json& operator[](const std::string& key) { type = Object; return members[key]; }
     std::string value(const std::string& fallback = "") const { return type == String ? text : fallback; }
-    int64_t integer(int64_t fallback = 0) const { return type == Number ? number : fallback; }
+    int64_t integer(int64_t fallback = 0) const { return type == Number && integral ? number : fallback; }
+    double real(double fallback = 0) const { return type == Number ? decimal : fallback; }
     bool is_null() const { return type == Null; }
 
     static void utf8(std::string& out, uint32_t cp) {
@@ -58,7 +74,7 @@ struct Json {
         switch (type) {
         case Null: return "null";
         case Bool: return boolean ? "true" : "false";
-        case Number: return std::to_string(number);
+        case Number: return number_text.empty() ? std::to_string(number) : number_text;
         case String: return quote(text);
         case Array: {
             std::string out = "[";
@@ -162,10 +178,24 @@ class Parser {
         size_t start = pos;
         if (c == '-') ++pos;
         if (pos >= source.size() || !std::isdigit((unsigned char)source[pos])) throw std::runtime_error("Invalid JSON value");
-        while (pos < source.size() && std::isdigit((unsigned char)source[pos])) ++pos;
-        if (pos < source.size() && (source[pos] == '.' || source[pos] == 'e' || source[pos] == 'E'))
-            throw std::runtime_error("Unsupported JSON number");
-        return Json::num(std::stoll(source.substr(start, pos - start)));
+        if (source[pos] == '0') {
+            ++pos;
+            if (pos < source.size() && std::isdigit((unsigned char)source[pos])) throw std::runtime_error("Invalid JSON number");
+        } else {
+            while (pos < source.size() && std::isdigit((unsigned char)source[pos])) ++pos;
+        }
+        if (pos < source.size() && source[pos] == '.') {
+            ++pos;
+            if (pos >= source.size() || !std::isdigit((unsigned char)source[pos])) throw std::runtime_error("Invalid JSON number");
+            while (pos < source.size() && std::isdigit((unsigned char)source[pos])) ++pos;
+        }
+        if (pos < source.size() && (source[pos] == 'e' || source[pos] == 'E')) {
+            ++pos;
+            if (pos < source.size() && (source[pos] == '+' || source[pos] == '-')) ++pos;
+            if (pos >= source.size() || !std::isdigit((unsigned char)source[pos])) throw std::runtime_error("Invalid JSON number");
+            while (pos < source.size() && std::isdigit((unsigned char)source[pos])) ++pos;
+        }
+        return Json::num(source.substr(start, pos - start));
     }
 public:
     explicit Parser(const std::string& s) : source(s) {}
