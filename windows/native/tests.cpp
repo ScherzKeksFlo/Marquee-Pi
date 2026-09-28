@@ -11,6 +11,10 @@ int main() {
     assert(parse(parsed.dump()).get("Title").value() == parsed.get("Title").value());
     auto game = parseGameMessage(parsed.dump());
     assert(game.action == "game" && game.title == L"P\u00e4c Man");
+    auto warnings = gameWarnings(R"({"ok":true,"warnings":[{"kind":"marquee","error":"bad image"},{"kind":"logo","error":""},null]})");
+    assert(warnings.size() == 2);
+    assert(warnings[0] == "marquee: bad image");
+    assert(warnings[1] == "logo");
     assert(validHotkey(L"Ctrl+Shift+F1"));
     assert(!validHotkey(L"Ctrl+Ctrl+F1"));
     assert(!validHotkey(L"garbage"));

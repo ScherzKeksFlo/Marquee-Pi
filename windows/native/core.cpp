@@ -423,7 +423,7 @@ HttpResult piRequest(const Settings& s, const std::wstring& method, const std::w
     WinHandle request(WinHttpOpenRequest(connection, method.c_str(), target.c_str(), nullptr,
                                           WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
     if (!request) throw std::runtime_error("Pi request failed");
-    WinHttpSetTimeouts(request, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
+    WinHttpSetTimeouts(request, 3000, 3000, timeoutMs, timeoutMs);
     std::wstring headers = L"X-Arcade-Token: " + s.token + L"\r\n" + extraHeader;
     if (!contentType.empty()) headers += L"Content-Type: " + contentType + L"\r\n";
     if (!WinHttpSendRequest(request, headers.c_str(), DWORD(-1),
@@ -459,6 +459,20 @@ std::string gamePayload(const GameMessage& game) {
     body["box_art"] = artwork(game.boxArt, budget);
     body["logo"] = artwork(game.logo, budget);
     return body.dump();
+}
+std::vector<std::string> gameWarnings(const std::string& response) {
+    std::vector<std::string> result;
+    mini::Json body = mini::parse(response);
+    const auto& warnings = body.get("warnings");
+    if (warnings.type != mini::Json::Array) return result;
+    for (const auto& warning : warnings.items) {
+        if (warning.type != mini::Json::Object) continue;
+        std::string kind = warning.get("kind").value();
+        std::string error = warning.get("error").value();
+        if (kind.empty()) continue;
+        result.push_back(error.empty() ? kind : kind + ": " + error);
+    }
+    return result;
 }
 std::string gesturePayload(const Settings& s) {
     mini::Json body = mini::Json::object();

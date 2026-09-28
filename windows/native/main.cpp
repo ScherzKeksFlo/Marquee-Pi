@@ -73,9 +73,9 @@ static std::wstring timeStamp() {
              t.wHour, t.wMinute, t.wSecond);
     return value;
 }
-static void logShutdown(const std::wstring& line) {
+static void logLine(const wchar_t* filename, const std::wstring& line) {
     try {
-        std::wstring path = dataDirectory() + L"\\shutdown.log";
+        std::wstring path = dataDirectory() + L"\\" + filename;
         HANDLE h = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr,
                                OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (h == INVALID_HANDLE_VALUE) return;
@@ -83,6 +83,10 @@ static void logShutdown(const std::wstring& line) {
         DWORD written = 0; WriteFile(h, data.data(), DWORD(data.size()), &written, nullptr);
         CloseHandle(h);
     } catch (...) {}
+}
+static void logShutdown(const std::wstring& line) { logLine(L"shutdown.log", line); }
+static void logArtworkWarning(const std::string& line) {
+    try { logLine(L"artwork-warnings.log", fromUtf8(line)); } catch (...) {}
 }
 static std::wstring extractTag(const std::wstring& xml, const std::wstring& marker) {
     size_t start = xml.find(marker);
@@ -373,8 +377,10 @@ void App::pollLoop() {
                     if (gameVersion == version) pendingDefault = false;
                 } else if (sync && current) {
                     try {
-                        piRequest(copy, L"POST", L"/v1/game", gamePayload(*current),
-                                  L"application/json; charset=utf-8");
+                        auto response = piRequest(copy, L"POST", L"/v1/game", gamePayload(*current),
+                                                  L"application/json; charset=utf-8");
+                        for (const auto& warning : gameWarnings(response.body))
+                            logArtworkWarning(warning);
                         std::lock_guard<std::mutex> guard(mutex);
                         if (gameVersion == version) needsSync = false;
                     } catch (const HttpError& error) {

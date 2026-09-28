@@ -57,6 +57,7 @@ HttpResult piRequest(const Settings& settings, const std::wstring& method,
                      const std::wstring& contentType = L"",
                      const std::wstring& extraHeader = L"", int timeoutMs = 8000);
 std::string gamePayload(const GameMessage& game);
+std::vector<std::string> gameWarnings(const std::string& response);
 std::string gesturePayload(const Settings& settings);
 GameMessage parseGameMessage(const std::string& json);
 std::wstring errorText(const std::exception& error);
