@@ -135,6 +135,7 @@ const VIEWS = [
 let menuOpen = false;
 let menuInfo = null;
 let pendingPower = null;
+let menuPage = "main";
 let menuIdleTimer = null;
 let menuRefreshTimer = null;
 let longPressTimer = null;
@@ -177,7 +178,27 @@ function renderMenu() {
   const panel = el("div", "panel");
 
   const head = el("div", "head");
-  head.appendChild(el("span", "", "Marquee-Pi"));
+  if (menuPage === "system") {
+    head.appendChild(button("‹ Zurück", () => { setPending(null); setPage("main"); }, { className: "back" }));
+    head.appendChild(el("span", "title", "System"));
+    head.appendChild(button("✕", closeMenu, { className: "close" }));
+    panel.appendChild(head);
+    const power = el("div", "row big");
+    if (pendingPower) {
+      const text = pendingPower === "reboot" ? "Pi wirklich neu starten?" : "Pi wirklich herunterfahren?";
+      power.appendChild(el("div", "confirm", text));
+      power.appendChild(button("Ja", () => runPower(pendingPower), { className: "danger" }));
+      power.appendChild(button("Abbrechen", () => setPending(null)));
+    } else {
+      power.appendChild(button("Neustart", () => setPending("reboot"), { className: "danger" }));
+      power.appendChild(button("Herunterfahren", () => setPending("poweroff"), { className: "danger" }));
+    }
+    panel.appendChild(power);
+    menu.replaceChildren(panel);
+    return;
+  }
+  head.appendChild(el("span", "title", "Marquee-Pi"));
+  if (info?.power_enabled) head.appendChild(button("System …", () => setPage("system"), { className: "system" }));
   head.appendChild(button("✕", closeMenu, { className: "close" }));
   panel.appendChild(head);
 
@@ -215,21 +236,12 @@ function renderMenu() {
   addRow("Version", info?.app_version ?? "…");
   panel.appendChild(status);
 
-  if (info?.power_enabled) {
-    panel.appendChild(el("div", "section", "System"));
-    const power = el("div", "row");
-    if (pendingPower) {
-      const text = pendingPower === "reboot" ? "Pi wirklich neu starten?" : "Pi wirklich herunterfahren?";
-      power.appendChild(el("div", "confirm", text));
-      power.appendChild(button("Ja", () => runPower(pendingPower), { className: "danger" }));
-      power.appendChild(button("Abbrechen", () => setPending(null)));
-    } else {
-      power.appendChild(button("Neustart", () => setPending("reboot"), { className: "danger" }));
-      power.appendChild(button("Herunterfahren", () => setPending("poweroff"), { className: "danger" }));
-    }
-    panel.appendChild(power);
-  }
   menu.replaceChildren(panel);
+}
+
+function setPage(page) {
+  menuPage = page;
+  renderMenu();
 }
 
 let pendingTimer = null;
@@ -277,6 +289,7 @@ function openMenu() {
   menu.hidden = false;
   menuInfo = null;
   pendingPower = null;
+  menuPage = "main";
   bumpMenuIdle();
   renderMenu();
   refreshMenuInfo();
