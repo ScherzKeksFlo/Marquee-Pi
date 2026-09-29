@@ -1,8 +1,87 @@
 #include "core.hpp"
 #include "thumbnail.hpp"
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
 #include <cassert>
+#include <cstdint>
 #include <filesystem>
 #include <iostream>
+
+// Encodes a 1000x562 H.264 clip (neither side is a multiple of 16, so decoder
+// buffers carry padding): red top half, blue bottom half, green bar on the left.
+// Returns false when this system has no H.264 encoder.
+static bool writeTestVideo(const wchar_t* path) {
+    const UINT32 W = 1000, H = 562, FPS = 10, FRAMES = 10;
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) return false;
+    bool ok = false;
+    IMFSinkWriter* writer = nullptr;
+    IMFMediaType *out = nullptr, *in = nullptr;
+    DWORD stream = 0;
+    do {
+        if (FAILED(MFCreateSinkWriterFromURL(path, nullptr, nullptr, &writer))) break;
+        if (FAILED(MFCreateMediaType(&out)) || FAILED(MFCreateMediaType(&in))) break;
+        out->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        out->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
+        out->SetUINT32(MF_MT_AVG_BITRATE, 800000);
+        out->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+        MFSetAttributeSize(out, MF_MT_FRAME_SIZE, W, H);
+        MFSetAttributeRatio(out, MF_MT_FRAME_RATE, FPS, 1);
+        MFSetAttributeRatio(out, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+        if (FAILED(writer->AddStream(out, &stream))) break;
+        in->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        in->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+        in->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+        in->SetUINT32(MF_MT_DEFAULT_STRIDE, W * 4);  // positive = top-down input
+        MFSetAttributeSize(in, MF_MT_FRAME_SIZE, W, H);
+        MFSetAttributeRatio(in, MF_MT_FRAME_RATE, FPS, 1);
+        MFSetAttributeRatio(in, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+        if (FAILED(writer->SetInputMediaType(stream, in, nullptr)) || FAILED(writer->BeginWriting())) break;
+        bool failed = false;
+        for (UINT32 f = 0; f < FRAMES && !failed; ++f) {
+            IMFMediaBuffer* buffer = nullptr;
+            IMFSample* sample = nullptr;
+            BYTE* data = nullptr;
+            if (FAILED(MFCreateMemoryBuffer(W * H * 4, &buffer)) || FAILED(buffer->Lock(&data, nullptr, nullptr))) {
+                failed = true;
+            } else {
+                for (UINT32 y = 0; y < H; ++y)
+                    for (UINT32 x = 0; x < W; ++x)
+                        reinterpret_cast<uint32_t*>(data)[y * W + x] =
+                            x < W / 6 ? 0x0000FF00u : (y < H / 2 ? 0x00FF0000u : 0x000000FFu);
+                buffer->Unlock();
+                buffer->SetCurrentLength(W * H * 4);
+                failed = FAILED(MFCreateSample(&sample)) || FAILED(sample->AddBuffer(buffer)) ||
+                         FAILED(sample->SetSampleTime(LONGLONG(f) * 10000000 / FPS)) ||
+                         FAILED(sample->SetSampleDuration(10000000 / FPS)) ||
+                         FAILED(writer->WriteSample(stream, sample));
+            }
+            if (sample) sample->Release();
+            if (buffer) buffer->Release();
+        }
+        ok = !failed && SUCCEEDED(writer->Finalize());
+    } while (false);
+    if (in) in->Release();
+    if (out) out->Release();
+    if (writer) writer->Release();
+    MFShutdown();
+    return ok;
+}
+
+static uint32_t pixelAt(HBITMAP bitmap, int percentX, int percentY) {
+    BITMAP info{};
+    GetObjectW(bitmap, sizeof(info), &info);
+    auto* pixels = static_cast<uint32_t*>(info.bmBits);
+    return pixels[(info.bmHeight * percentY / 100) * info.bmWidth + info.bmWidth * percentX / 100] & 0xFFFFFF;
+}
+
+// True when the channel at the given bit shift (16 red, 8 green, 0 blue) clearly dominates.
+static bool isDominant(uint32_t rgb, int shift) {
+    for (int other : {16, 8, 0})
+        if (other != shift && ((rgb >> other) & 0xFF) >= 60) return false;
+    return ((rgb >> shift) & 0xFF) > 200;
+}
+
 int main() {
     using namespace mini;
     static_assert(MARQUEE_PI_ARTWORK_BUDGET_BYTES == 24379392);
@@ -97,5 +176,20 @@ int main() {
     assert(!createThumbnail(dataDirectory() + L"\\missing.png", 112, 70));
     assert(!createThumbnail(dataDirectory() + L"\\missing.mp4", 112, 70));
     assert(!createThumbnail(imagePath, 0, 70));
+
+    // Video thumbnails must keep orientation and row alignment (regression: decoder
+    // buffers are padded to 16, which once sheared and flipped the picture).
+    const std::wstring videoPath = dataDirectory() + L"\\thumb-test.mp4";
+    if (writeTestVideo(videoPath.c_str())) {
+        HBITMAP frame = createThumbnail(videoPath, 112, 70);
+        assert(frame);
+        const uint32_t top = pixelAt(frame, 60, 25), bottom = pixelAt(frame, 60, 75), marker = pixelAt(frame, 8, 50);
+        assert(isDominant(top, 16));     // red on top
+        assert(isDominant(bottom, 0));   // blue below
+        assert(isDominant(marker, 8));   // green bar stays vertical
+        DeleteObject(frame);
+    } else {
+        std::cout << "video thumbnail test skipped (no H.264 encoder)\n";
+    }
     std::cout << "native tests passed\n";
 }

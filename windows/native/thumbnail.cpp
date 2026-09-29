@@ -35,12 +35,15 @@ std::wstring lowerExtension(const std::wstring& path) {
 }
 
 // Scales any WIC source to fit the box and draws it centred on a dark DIB.
-HBITMAP renderToDib(IWICImagingFactory* factory, IWICBitmapSource* source, int width, int height) {
+// pixelAspect is the width of one source pixel relative to its height (1.0 = square).
+HBITMAP renderToDib(IWICImagingFactory* factory, IWICBitmapSource* source, int width, int height,
+                    double pixelAspect = 1.0) {
     UINT sw = 0, sh = 0;
     if (FAILED(source->GetSize(&sw, &sh)) || !sw || !sh) return nullptr;
-    const double scale = std::min(double(width) / sw, double(height) / sh);
-    const UINT tw = std::max(1u, UINT(std::lround(sw * scale)));
-    const UINT th = std::max(1u, UINT(std::lround(sh * scale)));
+    const double displayWidth = sw * pixelAspect;
+    const double scale = std::min(double(width) / displayWidth, double(height) / sh);
+    const UINT tw = std::min(UINT(width), std::max(1u, UINT(std::lround(displayWidth * scale))));
+    const UINT th = std::min(UINT(height), std::max(1u, UINT(std::lround(sh * scale))));
 
     Ref<IWICBitmapScaler> scaler;
     if (FAILED(factory->CreateBitmapScaler(scaler.out())) ||
@@ -91,6 +94,21 @@ HBITMAP imageThumbnail(const std::wstring& path, int width, int height) {
     return renderToDib(factory.ptr, frame.ptr, width, height);
 }
 
+// The reader's video processor allocates RGB32 frames with width and height rounded
+// up (to 16 in practice) while the media type still states the visible width, and
+// its buffers are plain memory without 2D information. Only the buffer length gives
+// away the real row pitch, so look for the layout that accounts for it exactly and
+// fall back to the reported stride when none does.
+size_t rowPitchFromLength(size_t length, UINT32 width, UINT32 height, size_t reported) {
+    auto align = [](size_t value, size_t to) { return (value + to - 1) / to * to; };
+    for (size_t alignment : {size_t(1), size_t(16), size_t(32), size_t(64)}) {
+        const size_t pitch = align(width, alignment) * 4;
+        for (size_t rows : {size_t(height), align(height, 16), align(height, alignment)})
+            if (pitch * rows == length) return pitch;
+    }
+    return reported;
+}
+
 HBITMAP videoThumbnail(const std::wstring& path, int width, int height) {
     Ref<IMFAttributes> attributes;
     if (FAILED(MFCreateAttributes(attributes.out(), 1)) ||
@@ -110,11 +128,13 @@ HBITMAP videoThumbnail(const std::wstring& path, int width, int height) {
     UINT32 vw = 0, vh = 0;
     if (FAILED(reader->GetCurrentMediaType(stream, actual.out())) ||
         FAILED(MFGetAttributeSize(actual.ptr, MF_MT_FRAME_SIZE, &vw, &vh)) || !vw || !vh) return nullptr;
-    LONG stride = 0;
-    if (FAILED(MFGetStrideForBitmapInfoHeader(MFVideoFormat_RGB32.Data1, vw, &stride)) || stride == 0)
-        stride = -LONG(vw) * 4;
-    const bool bottomUp = stride < 0;
-    const size_t pitch = size_t(bottomUp ? -stride : stride);
+    // Fallback only: the decoder states the stride of its RGB32 output, and its sign
+    // tells the orientation (positive = top-down). Prefer IMF2DBuffer below.
+    LONG typeStride = LONG(MFGetAttributeUINT32(actual.ptr, MF_MT_DEFAULT_STRIDE, 0));
+    if (typeStride == 0) typeStride = LONG(vw) * 4;
+    UINT32 pixelNumerator = 1, pixelDenominator = 1;
+    if (FAILED(MFGetAttributeRatio(actual.ptr, MF_MT_PIXEL_ASPECT_RATIO, &pixelNumerator, &pixelDenominator)) ||
+        !pixelNumerator || !pixelDenominator) pixelNumerator = pixelDenominator = 1;
 
     // Aim for the middle of the clip; the reader delivers frames from the previous
     // key frame on, so read forward until the target time is reached.
@@ -151,15 +171,33 @@ HBITMAP videoThumbnail(const std::wstring& path, int width, int height) {
 
     Ref<IMFMediaBuffer> buffer;
     if (FAILED(best->ConvertToContiguousBuffer(buffer.out()))) return nullptr;
-    BYTE* data = nullptr;
+    // Decoder buffers can carry padding rows and either orientation, so ask the
+    // buffer for the first visible row and a signed pitch instead of assuming both.
+    Ref<IMF2DBuffer> buffer2d;
+    BYTE* firstRow = nullptr;
+    LONG pitch = 0;
+    bool locked2d = false;
     DWORD length = 0;
-    if (FAILED(buffer->Lock(&data, nullptr, &length)) || !data) return nullptr;
+    if (SUCCEEDED(buffer->QueryInterface(IID_PPV_ARGS(buffer2d.out()))) &&
+        SUCCEEDED(buffer2d->Lock2D(&firstRow, &pitch)) && firstRow) {
+        locked2d = true;
+    } else {
+        BYTE* data = nullptr;
+        if (FAILED(buffer->Lock(&data, nullptr, &length)) || !data) return nullptr;
+        const size_t rowBytes = rowPitchFromLength(length, vw, vh, size_t(typeStride < 0 ? -typeStride : typeStride));
+        if (rowBytes < size_t(vw) * 4 || rowBytes * vh > length) {
+            buffer->Unlock();
+            return nullptr;
+        }
+        pitch = typeStride < 0 ? -LONG(rowBytes) : LONG(rowBytes);
+        firstRow = pitch < 0 ? data + rowBytes * (vh - 1) : data;
+    }
     HBITMAP result = nullptr;
-    if (length >= pitch * vh) {
+    if (pitch != 0) {
         // Hand the frame to WIC as an ordinary top-down 32-bit bitmap.
         std::vector<uint8_t> frame(size_t(vw) * vh * 4);
         for (UINT32 y = 0; y < vh; ++y) {
-            const BYTE* row = data + pitch * (bottomUp ? vh - 1 - y : y);
+            const BYTE* row = firstRow + ptrdiff_t(pitch) * ptrdiff_t(y);
             uint8_t* out = &frame[size_t(y) * vw * 4];
             for (UINT32 x = 0; x < vw; ++x) {  // force opaque alpha; RGB32 leaves it undefined
                 out[x * 4 + 0] = row[x * 4 + 0];
@@ -174,9 +212,11 @@ HBITMAP videoThumbnail(const std::wstring& path, int width, int height) {
                                        IID_PPV_ARGS(factory.out()))) &&
             SUCCEEDED(factory->CreateBitmapFromMemory(vw, vh, GUID_WICPixelFormat32bppBGRA, vw * 4,
                                                       UINT(frame.size()), frame.data(), bitmap.out())))
-            result = renderToDib(factory.ptr, bitmap.ptr, width, height);
+            result = renderToDib(factory.ptr, bitmap.ptr, width, height,
+                                 double(pixelNumerator) / double(pixelDenominator));
     }
-    buffer->Unlock();
+    if (locked2d) buffer2d->Unlock2D();
+    else buffer->Unlock();
     return result;
 }
 
