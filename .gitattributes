@@ -8,3 +8,4 @@
 *.svg text eol=lf
 *.service text eol=lf
 *.ps1 text eol=crlf
+packaging/deb/debian/* text eol=lf

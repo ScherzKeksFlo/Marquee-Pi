@@ -1,0 +1,29 @@
+#!/bin/sh
+# Marquee-Pi: refresh systemd after removal; on purge also delete the configuration
+# (including the API token), the stored media and the service user.
+set -e
+
+case "$1" in
+remove|purge)
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload || true
+    fi
+    if [ "$1" = purge ]; then
+        rm -rf /etc/marquee-pi /var/lib/marquee-pi /etc/systemd/system/marquee-pi-kiosk.service.d
+        if getent passwd marqueepi >/dev/null; then
+            deluser --quiet --system marqueepi || true
+        fi
+        if getent group marqueepi >/dev/null; then
+            delgroup --quiet --system marqueepi || true
+        fi
+    fi
+    ;;
+upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    ;;
+*)
+    echo "postrm called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

@@ -1,6 +1,6 @@
 # Pi display program
 
-The complete guide for a fresh Raspberry Pi OS Lite installation is in [INSTALL.md](INSTALL.md). The Trixie installation and display were tested on a Pi 3 B+ with a 7-inch DSI display. For a black DSI picture on kernel 6.18, INSTALL.md describes the tested FKMS workaround.
+The complete guide for a fresh Raspberry Pi OS Lite installation is in [INSTALL.md](INSTALL.md); the easiest way is the Debian package described there. The Trixie installation and display were tested on a Pi 3 B+ with a 7-inch DSI display. For a black DSI picture on kernel 6.18, INSTALL.md describes the tested FKMS workaround.
 
 The Python server provides the local full-screen display and a token-protected API. The display loads a default image or video stored on the Pi, shows game artwork and handles taps as well as four swipe directions. The boot splash and shutdown media are also uploaded via the Windows tool and stored permanently on the Pi.
 

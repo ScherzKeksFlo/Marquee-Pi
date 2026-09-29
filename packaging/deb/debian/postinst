@@ -1,0 +1,71 @@
+#!/bin/sh
+# Marquee-Pi: create the service user and directories, generate the API token on first
+# install, pick the kiosk login user and start the services.
+set -e
+
+KIOSK_DROPIN_DIR=/etc/systemd/system/marquee-pi-kiosk.service.d
+KIOSK_DROPIN=$KIOSK_DROPIN_DIR/10-kiosk-user.conf
+CONFIG=/etc/marquee-pi/config.json
+EXAMPLE=/usr/share/doc/marquee-pi/config.example.json
+PLACEHOLDER=CHANGE_ME_TO_A_RANDOM_TOKEN_AT_LEAST_24_CHARACTERS
+
+case "$1" in
+configure)
+    if ! getent passwd marqueepi >/dev/null; then
+        adduser --system --group --no-create-home --home /nonexistent \
+            --shell /usr/sbin/nologin --quiet marqueepi
+    fi
+    install -d -o marqueepi -g marqueepi -m 750 /var/lib/marquee-pi
+    install -d -o root -g marqueepi -m 750 /etc/marquee-pi
+
+    if [ ! -e "$CONFIG" ]; then
+        token=$(openssl rand -hex 32)
+        sed "s/$PLACEHOLDER/$token/" "$EXAMPLE" > "$CONFIG.new"
+        chown root:marqueepi "$CONFIG.new"
+        chmod 640 "$CONFIG.new"
+        mv "$CONFIG.new" "$CONFIG"
+        echo "marquee-pi: created $CONFIG with a random API token." >&2
+        echo "marquee-pi: enter the same token in the Windows app (Settings > Connection)," >&2
+        echo "marquee-pi: set allowed_client_ips to the Windows IP and review the file." >&2
+    fi
+
+    # The kiosk unit ships with User=pi. If there is no such user, log the kiosk in as
+    # the first regular user instead, via a drop-in that the package does not own.
+    if [ ! -e "$KIOSK_DROPIN" ] && ! id pi >/dev/null 2>&1; then
+        kiosk=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /(nologin|false)$/ { print $1; exit }')
+        if [ -n "$kiosk" ]; then
+            home=$(getent passwd "$kiosk" | cut -d: -f6)
+            group=$(id -gn "$kiosk")
+            mkdir -p "$KIOSK_DROPIN_DIR"
+            {
+                echo "[Service]"
+                echo "User=$kiosk"
+                echo "Group=$group"
+                echo "WorkingDirectory=$home"
+                echo "Environment=HOME=$home"
+            } > "$KIOSK_DROPIN"
+            echo "marquee-pi: the kiosk runs as user '$kiosk' (see $KIOSK_DROPIN)." >&2
+        else
+            echo "marquee-pi: no regular user found for the kiosk login; create one and" >&2
+            echo "marquee-pi: set User= in a drop-in for marquee-pi-kiosk.service." >&2
+        fi
+    fi
+
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload || true
+        systemctl enable marquee-pi-api.service marquee-pi-kiosk.service \
+            marquee-pi-shutdown-animation.service marquee-pi-boot-splash.service || true
+        systemctl restart marquee-pi-api.service || true
+        systemctl restart marquee-pi-kiosk.service || true
+        systemctl start marquee-pi-shutdown-animation.service || true
+    fi
+    ;;
+abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+*)
+    echo "postinst called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

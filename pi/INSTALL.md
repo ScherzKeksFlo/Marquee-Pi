@@ -44,7 +44,25 @@ With a different network layout, change the addresses accordingly. Wi-Fi can be 
 
 The API deliberately uses plain HTTP; the header with the API token is not encrypted on the wire. Therefore, do not open port 8765 on the router or make it reachable from the internet. For the direct connection, use `"bind": "10.0.0.10"` and `"allowed_client_ips": ["10.0.0.1"]`. If the API should also be reachable via Wi-Fi, `bind` can stay at `0.0.0.0`, but `allowed_client_ips` must explicitly list all permitted Windows addresses. Firewall rules can additionally restrict access to the direct interface.
 
-## Application and services
+## Installation with the Debian package
+
+The package installs everything described under "Manual installation" below in one step, including the packages from the previous section. Download `marquee-pi_<version>_all.deb` from the release page (or build it with `python3 packaging/deb/build_deb.py`), copy it to the Pi and install it with apt so that the dependencies are resolved:
+
+```sh
+sudo apt install ./marquee-pi_1.0.0~beta.1_all.deb
+```
+
+The package creates the service user `marqueepi`, installs the program to `/opt/marquee-pi`, the systemd services, the Polkit rule, the Chromium policy and the Xorg configuration, generates `/etc/marquee-pi/config.json` with a random API token (never overwritten on upgrades) and starts the services. The kiosk logs in as user `pi`; if there is no such user, the first regular user is used and the installer prints the drop-in it wrote.
+
+Afterwards:
+
+1. Review `/etc/marquee-pi/config.json`: set `allowed_client_ips` to the Windows IP, `bind` if needed, and `power_commands_enabled` when the touch menu and the Windows app may restart or shut down the Pi. Then `sudo systemctl restart marquee-pi-api`.
+2. Enter the token from that file in the Windows app under **Settings > Connection**.
+3. Continue with the network, boot splash and quiet boot sections. The boot configuration is deliberately not changed by the package. `marquee-pi-configure-quiet-boot` and `marquee-display-test` are installed to `/usr/sbin`.
+
+Upgrade with `sudo apt install ./newer-package.deb`; configuration and media are kept. `sudo apt remove marquee-pi` stops and disables the services; `sudo apt purge marquee-pi` also deletes the configuration including the token, the stored media and the service user.
+
+## Manual installation from the repository
 
 Run the following commands in the `pi` folder of a local copy of this repository on the Pi. A regular user must exist for the kiosk login; it is called `pi` here. If the name is different, set `PI_USER` accordingly.
 

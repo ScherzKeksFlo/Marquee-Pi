@@ -1,0 +1,23 @@
+#!/bin/sh
+# Marquee-Pi: stop and disable the services before the files are removed.
+set -e
+
+case "$1" in
+remove|deconfigure)
+    if [ -d /run/systemd/system ]; then
+        systemctl stop marquee-pi-kiosk.service || true
+        systemctl stop marquee-pi-api.service || true
+        systemctl stop marquee-pi-shutdown-animation.service || true
+        systemctl disable marquee-pi-api.service marquee-pi-kiosk.service \
+            marquee-pi-shutdown-animation.service marquee-pi-boot-splash.service || true
+    fi
+    ;;
+upgrade|failed-upgrade)
+    ;;
+*)
+    echo "prerm called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0
