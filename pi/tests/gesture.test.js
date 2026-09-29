@@ -26,4 +26,25 @@ assert.equal(multi.up(2, 120, 100, 210), null);
 multi.down(3, 100, 100, 300);
 assert.equal(multi.up(3, 100, 100, 350), "tap");
 
+const held = new GestureRecognizer();
+held.down(1, 100, 100, 0);
+assert.equal(held.longPress(500), false);
+assert.equal(held.longPress(800), true);
+assert.equal(held.longPress(900), false, "long press fires only once");
+assert.equal(held.up(1, 100, 100, 1000), null, "release after long press is not a tap");
+
+const drifted = new GestureRecognizer();
+drifted.down(1, 100, 100, 0);
+drifted.move(1, 160, 100);
+assert.equal(drifted.longPress(900), false, "moving finger is not a long press");
+assert.equal(drifted.up(1, 160, 100, 950), null);
+
+const twoFingers = new GestureRecognizer();
+twoFingers.down(1, 100, 100, 0);
+twoFingers.down(2, 120, 100, 100);
+assert.equal(twoFingers.longPress(900), false, "multi-touch never opens the menu");
+twoFingers.up(1, 100, 100, 950);
+twoFingers.up(2, 120, 100, 960);
+assert.equal(new GestureRecognizer().longPress(900), false, "no active pointer");
+
 console.log("Gesture tests passed");

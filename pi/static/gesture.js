@@ -9,6 +9,7 @@
     constructor(options = {}) {
       this.tapDistance = options.tapDistance ?? 22;
       this.tapDurationMs = options.tapDurationMs ?? 450;
+      this.longPressMs = options.longPressMs ?? 800;
       this.swipeDistance = options.swipeDistance ?? 75;
       this.swipeDurationMs = options.swipeDurationMs ?? 1400;
       this.axisRatio = options.axisRatio ?? 1.25;
@@ -38,6 +39,17 @@
       }
     }
 
+    // Polled by a timer while a finger is held. Returns true once, when the single
+    // active pointer has stayed put long enough; its release then yields no gesture.
+    longPress(timeMs) {
+      const active = this.active;
+      if (!active || active.consumed || this.blocked) return false;
+      if (timeMs - active.timeMs < this.longPressMs) return false;
+      if (Math.hypot(active.lastX - active.x, active.lastY - active.y) > this.tapDistance) return false;
+      active.consumed = true;
+      return true;
+    }
+
     up(id, x, y, timeMs) {
       this.pointers.delete(id);
       if (this.blocked) {
@@ -46,7 +58,7 @@
       }
       const start = this.active;
       this.active = null;
-      if (!start || start.id !== id) return null;
+      if (!start || start.id !== id || start.consumed) return null;
 
       const dx = x - start.x;
       const dy = y - start.y;
