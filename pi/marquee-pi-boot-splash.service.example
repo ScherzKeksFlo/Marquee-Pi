@@ -1,7 +1,6 @@
 [Unit]
 Description=Marquee-Pi boot splash
-Wants=dev-fb0.device
-After=local-fs.target dev-fb0.device
+After=local-fs.target
 Before=arcade-pi-kiosk.service
 ConditionPathExists=/var/lib/arcade-pi-display/boot-splash
 ConditionPathExists=/dev/fb0
