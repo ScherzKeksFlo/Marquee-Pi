@@ -116,7 +116,8 @@ jobs:
           check "token placeholder replaced" sh -c '! grep -q CHANGE_ME /etc/marquee-pi/config.json'
           check "polkit rule installed" test -f /usr/share/polkit-1/rules.d/50-marquee-pi.rules
           check "kiosk unit installed" test -f /usr/lib/systemd/system/marquee-pi-kiosk.service
-          check "server starts" python3 -c "import sys; sys.path.insert(0, '/opt/marquee-pi'); import marquee_pi"
+          # Importing as root leaves bytecode in /opt/marquee-pi; removing the package must clean that up.
+          check "server module imports" python3 -c "import sys; sys.path.insert(0, '/opt/marquee-pi'); import marquee_pi"
           if ! apt-get purge -y marquee-pi > purge.log 2>&1; then
             cat purge.log
             echo "::error::apt-get purge failed: $(tail -n 8 purge.log | tr '\n' '|')"

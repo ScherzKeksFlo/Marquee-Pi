@@ -150,6 +150,13 @@ class DebPackageTests(unittest.TestCase):
                 result = subprocess.run(["sh", "-n"], input=text, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, f"{script}: {result.stderr}")
 
+    def test_postrm_removes_leftover_bytecode_and_the_program_directory(self):
+        postrm = self.control["./postrm"][1].decode()
+        self.assertIn("rm -rf /opt/marquee-pi/__pycache__", postrm)
+        self.assertIn("rmdir /opt/marquee-pi", postrm)
+        # ... for remove as well as purge, i.e. before the purge-only block
+        self.assertLess(postrm.index("rmdir /opt/marquee-pi"), postrm.index('if [ "$1" = purge ]'))
+
     def test_old_project_names_are_gone(self):
         pattern = re.compile(rb"arcade[-_ ]?pi|arcadepi|x-arcade", re.I)
         for source in (self.data, self.control):

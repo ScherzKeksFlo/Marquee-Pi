@@ -8,6 +8,10 @@ remove|purge)
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload || true
     fi
+    # Python writes bytecode next to the program when it is run as root; dpkg does not
+    # know these files and would leave the directory behind.
+    rm -rf /opt/marquee-pi/__pycache__
+    rmdir /opt/marquee-pi 2>/dev/null || true
     if [ "$1" = purge ]; then
         rm -rf /etc/marquee-pi /var/lib/marquee-pi /etc/systemd/system/marquee-pi-kiosk.service.d
         if getent passwd marqueepi >/dev/null; then
