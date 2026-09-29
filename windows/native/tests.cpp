@@ -54,5 +54,28 @@ int main() {
     assert(loaded.retroArchNetworkPort == 55355);
     assert(loaded.gestures.at("swipe-left") == "box_art");
     assert(!loaded.autostart);
+
+    // Long press keeps the touch menu by default and is sent to the Pi with the swipes.
+    assert(loaded.gestures.at("long-press") == "touch_menu");
+    auto payload = parse(gesturePayload(loaded));
+    assert(payload.get("long-press").value() == "touch_menu");
+    assert(payload.get("swipe-left").value() == "box_art");
+
+    // The menu can move to a swipe while long press takes another action.
+    settings.gestures["swipe-down"] = "touch_menu";
+    settings.gestures["long-press"] = "retroarch_menu";
+    saveSettings(settings);
+    loaded = loadSettings();
+    assert(loaded.gestures.at("swipe-down") == "touch_menu");
+    assert(loaded.gestures.at("long-press") == "retroarch_menu");
+    assert(parse(gesturePayload(loaded)).get("long-press").value() == "retroarch_menu");
+
+    // An INI written before long press became configurable still opens the menu.
+    std::string ini = readFile(settingsPath());
+    size_t start = ini.find("LongPress=");
+    assert(start != std::string::npos);
+    ini.erase(start, ini.find('\n', start) - start + 1);
+    writeFile(settingsPath(), ini);
+    assert(loadSettings().gestures.at("long-press") == "touch_menu");
     std::cout << "native tests passed\n";
 }

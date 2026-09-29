@@ -18,7 +18,8 @@ struct Settings {
     bool retroArchNetworkControl = false;
     int retroArchNetworkPort = 55355;
     bool autostart = false;
-    std::map<std::string, std::string> gestures;
+    // Long press keeps opening the Pi touch menu unless it is reassigned.
+    std::map<std::string, std::string> gestures{{"long-press", "touch_menu"}};
     bool configured() const;
 };
 

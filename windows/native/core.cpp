@@ -375,7 +375,8 @@ Settings loadSettings() {
             else {
                 static const std::map<std::string, std::string> names = {
                     {"swipedown", "swipe-down"}, {"swipeup", "swipe-up"},
-                    {"swiperight", "swipe-right"}, {"swipeleft", "swipe-left"}
+                    {"swiperight", "swipe-right"}, {"swipeleft", "swipe-left"},
+                    {"longpress", "long-press"}
                 };
                 auto it = names.find(key);
                 if (it != names.end()) s.gestures[it->second] = value;
@@ -388,7 +389,9 @@ Settings loadSettings() {
 void saveSettings(const Settings& s) {
     fs::create_directories(fs::path(dataDirectory()));
     auto gesture = [&](const char* key) {
-        auto it = s.gestures.find(key); return it == s.gestures.end() ? std::string("none") : it->second;
+        auto it = s.gestures.find(key);
+        if (it != s.gestures.end()) return it->second;
+        return std::string(std::string(key) == "long-press" ? "touch_menu" : "none");
     };
     std::string data = "; Marquee-Pi - use 'Einstellungen neu laden' after manual edits.\r\n"
                        "[Connection]\r\nPiUrl=" + line(s.piUrl) + "\r\nToken=" + line(s.token) +
@@ -396,6 +399,7 @@ void saveSettings(const Settings& s) {
                        "\r\nSwipeUp=" + gesture("swipe-up") +
                        "\r\nSwipeRight=" + gesture("swipe-right") +
                        "\r\nSwipeLeft=" + gesture("swipe-left") +
+                       "\r\nLongPress=" + gesture("long-press") +
                        "\r\nRetroArchMenuHotkey=" + line(s.hotkey) +
                        "\r\nRetroArchMenuMode=" + std::string(s.retroArchNetworkControl ? "network" : "keyboard") +
                        "\r\nRetroArchNetworkPort=" + std::to_string(s.retroArchNetworkPort) +
