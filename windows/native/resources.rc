@@ -3,8 +3,8 @@
 102 ICON "../Resources/disconnected.ico"
 
 1 VERSIONINFO
-FILEVERSION 1,0,0,0
-PRODUCTVERSION 1,0,0,0
+FILEVERSION 0,2,0,1
+PRODUCTVERSION 0,2,0,1
 FILEFLAGSMASK 0x3fL
 FILEOS 0x40004L
 FILETYPE 0x1L
@@ -16,11 +16,11 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Keks"
       VALUE "FileDescription", "Marquee-Pi Windows tray tool"
-      VALUE "FileVersion", "1.0.0"
+      VALUE "FileVersion", "0.2.0.1"
       VALUE "InternalName", "Marquee-Pi"
       VALUE "OriginalFilename", "Marquee-Pi.exe"
       VALUE "ProductName", "Marquee-Pi"
-      VALUE "ProductVersion", "1.0.0"
+      VALUE "ProductVersion", "0.2.0-beta.1"
     END
   END
   BLOCK "VarFileInfo"
