@@ -328,6 +328,27 @@ class MenuStateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 state.set_brightness(50)
 
+    def test_language_defaults_to_english_persists_and_bumps_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            state = DisplayState(data_dir, 60, data_dir / "missing")
+            self.assertEqual(state.describe()["language"], "en")
+            version = state.describe()["version"]
+            state.set_language("de")
+            self.assertEqual(state.describe()["language"], "de")
+            self.assertEqual(state.describe()["version"], version + 1)
+            state.set_language("de")  # unchanged: clients need not refresh
+            self.assertEqual(state.describe()["version"], version + 1)
+            self.assertEqual(DisplayState(data_dir, 60, data_dir / "missing").language, "de")
+            for invalid in ("fr", "", None, 5):
+                with self.assertRaises(ValueError):
+                    state.set_language(invalid)
+            self.assertEqual(state.language, "de")
+            (data_dir / "language.json").write_text('{"language": "xx"}', encoding="utf-8")
+            self.assertEqual(DisplayState(data_dir, 60, data_dir / "missing").language, "en")
+            (data_dir / "language.json").write_text("not json", encoding="utf-8")
+            self.assertEqual(DisplayState(data_dir, 60, data_dir / "missing").language, "en")
+
     def test_client_connection_expires(self):
         with tempfile.TemporaryDirectory() as directory:
             state = DisplayState(Path(directory), 60, Path(directory) / "missing")
@@ -371,6 +392,24 @@ class MenuApiTests(unittest.TestCase):
                     timeout=3).close()
             with urlopen(self.base + "/ui/system", timeout=3) as response:
                 self.assertTrue(json.load(response)["client_connected"])
+
+    def test_language_endpoint_requires_token_and_valid_value(self):
+        def post(payload, token="a" * 32):
+            request = Request(self.base + "/v1/language", data=json.dumps(payload).encode(), method="POST",
+                              headers={"X-Arcade-Token": token})
+            return urlopen(request, timeout=3)
+        with self.assertRaises(HTTPError) as result:
+            post({"language": "de"}, token="wrong")
+        self.assertEqual(result.exception.code, 401)
+        for payload in ({"language": "fr"}, {}, [], {"language": 1}):
+            with self.assertRaises(HTTPError) as result:
+                post(payload)
+            self.assertEqual(result.exception.code, 400)
+        self.assertEqual(self.state.language, "en")
+        with post({"language": "de"}) as response:
+            self.assertEqual(response.status, 200)
+        with urlopen(self.base + "/ui/state", timeout=3) as response:
+            self.assertEqual(json.load(response)["language"], "de")
 
     def test_unauthorized_request_does_not_count_as_client_contact(self):
         with self.assertRaises(HTTPError):

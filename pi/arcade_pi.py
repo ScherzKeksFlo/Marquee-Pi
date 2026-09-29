@@ -38,6 +38,9 @@ GESTURE_ACTIONS = ("none", "marquee", "box_art", "logo", "controls", "default",
 # The touch menu stays on long press unless a client assigns it elsewhere; older
 # clients that only know the four swipes therefore never lose access to it.
 DEFAULT_GESTURE_ACTIONS = {kind: "touch_menu" if kind == "long-press" else "none" for kind in GESTURES}
+# Language of the touch menu; the Windows app tells the Pi which one its user picked.
+LANGUAGES = ("en", "de")
+DEFAULT_LANGUAGE = "en"
 STATIC_MIME = {
     "index.html": "text/html; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
@@ -139,6 +142,7 @@ class DisplayState:
         self.shutting_down = False
         self.instance_id = uuid.uuid4().hex
         self.gesture_actions = self._load_gestures()
+        self.language = self._load_language()
         self.gesture_events: list[dict] = []
         self.next_gesture_id = 1
         self._restore_brightness()
@@ -235,6 +239,30 @@ class DisplayState:
             pass
         return DEFAULT_GESTURE_ACTIONS.copy()
 
+    def _load_language(self) -> str:
+        try:
+            language = json.loads((self.data_dir / "language.json").read_text(encoding="utf-8"))["language"]
+            if language in LANGUAGES:
+                return language
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        return DEFAULT_LANGUAGE
+
+    def set_language(self, language) -> None:
+        if language not in LANGUAGES:
+            raise ValueError("Invalid language")
+        pending = self.data_dir / "language.json.pending"
+        with self.upload_lock:
+            try:
+                pending.write_text(json.dumps({"language": language}), encoding="utf-8")
+                os.replace(pending, self.data_dir / "language.json")
+                with self.lock:
+                    if language != self.language:
+                        self.language = language
+                        self.version += 1
+            finally:
+                unlink_if_exists(pending)
+
     def set_gestures(self, actions: dict) -> None:
         if not isinstance(actions, dict) or any(
             kind not in GESTURES or action not in GESTURE_ACTIONS
@@ -287,6 +315,7 @@ class DisplayState:
                 "has_box_art": "box_art" in self.game_media,
                 "has_logo": "logo" in self.game_media,
                 "gesture_actions": self.gesture_actions.copy(),
+                "language": self.language,
                 "instance_id": self.instance_id,
                 "default_name": self.active_file.name if self.active_file else None,
                 "default_video": bool(self.active_file and self.active_file.suffix.lower() == ".mp4"),
@@ -691,6 +720,11 @@ class Handler(BaseHTTPRequestHandler):
                         warnings.append({"kind": kind, "error": str(exc) or "Invalid artwork"})
                 self.server.state.set_game(title, media)
                 self._json(200, {"ok": True, "warnings": warnings})
+                return
+            if path == "/v1/language":
+                payload = json.loads(self._body())
+                self.server.state.set_language(payload.get("language") if isinstance(payload, dict) else None)
+                self._json(200, {"ok": True})
                 return
             if path == "/v1/gesture-config":
                 payload = json.loads(self._body())
