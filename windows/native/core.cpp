@@ -181,8 +181,9 @@ std::string scaledArtwork(const std::wstring& path, const std::string& ext, cons
     ComPtr<IStream> stream;
     if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, stream.out()))) throw std::runtime_error("Artwork stream failed");
     ComPtr<IWICBitmapEncoder> encoder;
-    const CLSID encoderId = ext == ".png" ? CLSID_WICPngEncoder : CLSID_WICJpegEncoder;
-    if (FAILED(factory->CreateEncoder(encoderId, nullptr, encoder.out())) ||
+    // CreateEncoder takes a container format GUID, not the encoder's CLSID.
+    const GUID container = ext == ".png" ? GUID_ContainerFormatPng : GUID_ContainerFormatJpeg;
+    if (FAILED(factory->CreateEncoder(container, nullptr, encoder.out())) ||
         FAILED(encoder->Initialize(stream.ptr, WICBitmapEncoderNoCache)))
         throw std::runtime_error("Artwork encoder failed");
     ComPtr<IWICBitmapFrameEncode> frame;
@@ -208,6 +209,12 @@ std::string scaledArtwork(const std::wstring& path, const std::string& ext, cons
     GlobalUnlock(memory);
     return result;
 }
+// Artwork that could not be prepared is left out of the payload; the reason is kept
+// here so the caller can log it (per thread, because payloads are built on the poll thread).
+std::vector<std::string>& artworkErrors() {
+    thread_local std::vector<std::string> errors;
+    return errors;
+}
 mini::Json artwork(const std::wstring& path, size_t& budget) {
     if (path.empty() || !fileExists(path)) return {};
     std::string ext = lower(toUtf8(fs::path(path).extension().wstring()));
@@ -223,7 +230,13 @@ mini::Json artwork(const std::wstring& path, size_t& budget) {
         item["extension"] = mini::Json::str(ext);
         item["base64"] = mini::Json::str(base64(bytes));
         return item;
-    } catch (...) { return {}; }
+    } catch (const std::exception& error) {
+        artworkErrors().push_back(toUtf8(fs::path(path).filename().wstring()) + ": " + error.what());
+        return {};
+    } catch (...) {
+        artworkErrors().push_back(toUtf8(fs::path(path).filename().wstring()) + ": unknown error");
+        return {};
+    }
 }
 }
 std::wstring fromUtf8(const std::string& s) {
@@ -498,6 +511,11 @@ HttpResult piRequest(const Settings& s, const std::wstring& method, const std::w
     if (result.status < 200 || result.status >= 300)
         throw HttpError(result.status, "Pi HTTP " + std::to_string(result.status) + ": " + result.body);
     return result;
+}
+std::vector<std::string> takeArtworkErrors() {
+    std::vector<std::string> taken;
+    taken.swap(artworkErrors());
+    return taken;
 }
 std::string gamePayload(const GameMessage& game) {
     size_t budget = MARQUEE_PI_ARTWORK_BUDGET_BYTES;

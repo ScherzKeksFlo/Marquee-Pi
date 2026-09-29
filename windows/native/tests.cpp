@@ -4,6 +4,7 @@
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
+#include <wincodec.h>
 #include <cassert>
 #include <cstdint>
 #include <filesystem>
@@ -74,6 +75,50 @@ static uint32_t pixelAt(HBITMAP bitmap, int percentX, int percentY) {
     GetObjectW(bitmap, sizeof(info), &info);
     auto* pixels = static_cast<uint32_t*>(info.bmBits);
     return pixels[(info.bmHeight * percentY / 100) * info.bmWidth + info.bmWidth * percentX / 100] & 0xFFFFFF;
+}
+
+// Writes a gradient image of the given container format (GUID_ContainerFormatPng/Jpeg).
+static bool writeTestImage(const std::wstring& path, const GUID& container, UINT width, UINT height) {
+    IWICImagingFactory* factory = nullptr;
+    IWICBitmap* bitmap = nullptr;
+    IWICStream* stream = nullptr;
+    IWICBitmapEncoder* encoder = nullptr;
+    IWICBitmapFrameEncode* frame = nullptr;
+    std::vector<uint8_t> pixels(size_t(width) * height * 4);
+    for (UINT y = 0; y < height; ++y)
+        for (UINT x = 0; x < width; ++x) {
+            uint8_t* p = &pixels[(size_t(y) * width + x) * 4];
+            p[0] = uint8_t(x * 255 / width); p[1] = uint8_t(y * 255 / height); p[2] = 128; p[3] = 255;
+        }
+    bool ok = SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                                         IID_PPV_ARGS(&factory))) &&
+        SUCCEEDED(factory->CreateBitmapFromMemory(width, height, GUID_WICPixelFormat32bppBGRA, width * 4,
+                                                  UINT(pixels.size()), pixels.data(), &bitmap)) &&
+        SUCCEEDED(factory->CreateStream(&stream)) &&
+        SUCCEEDED(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE)) &&
+        SUCCEEDED(factory->CreateEncoder(container, nullptr, &encoder)) &&
+        SUCCEEDED(encoder->Initialize(stream, WICBitmapEncoderNoCache)) &&
+        SUCCEEDED(encoder->CreateNewFrame(&frame, nullptr)) && SUCCEEDED(frame->Initialize(nullptr)) &&
+        SUCCEEDED(frame->SetSize(width, height));
+    WICPixelFormatGUID format = GUID_WICPixelFormat24bppBGR;
+    ok = ok && SUCCEEDED(frame->SetPixelFormat(&format)) && SUCCEEDED(frame->WriteSource(bitmap, nullptr)) &&
+         SUCCEEDED(frame->Commit()) && SUCCEEDED(encoder->Commit());
+    if (frame) frame->Release();
+    if (encoder) encoder->Release();
+    if (stream) stream->Release();
+    if (bitmap) bitmap->Release();
+    if (factory) factory->Release();
+    return ok;
+}
+
+static std::string decodeBase64(const std::string& text) {
+    DWORD size = 0;
+    if (!CryptStringToBinaryA(text.c_str(), 0, CRYPT_STRING_BASE64, nullptr, &size, nullptr, nullptr)) return "";
+    std::string bytes(size, '\0');
+    if (!CryptStringToBinaryA(text.c_str(), 0, CRYPT_STRING_BASE64, reinterpret_cast<BYTE*>(bytes.data()), &size,
+                              nullptr, nullptr)) return "";
+    bytes.resize(size);
+    return bytes;
 }
 
 // True when the channel at the given bit shift (16 red, 8 green, 0 blue) clearly dominates.
@@ -213,6 +258,37 @@ int main() {
     assert(!createThumbnail(dataDirectory() + L"\\missing.png", 112, 70));
     assert(!createThumbnail(dataDirectory() + L"\\missing.mp4", 112, 70));
     assert(!createThumbnail(imagePath, 0, 70));
+
+    // Artwork wider than 1600 px is scaled down before it is sent (regression: the
+    // encoder was created from a CLSID instead of a container GUID, every scaled
+    // image failed and was silently dropped, so large marquees never reached the Pi).
+    {
+        const std::wstring bigPng = dataDirectory() + L"\\big-marquee.png";
+        const std::wstring bigJpg = dataDirectory() + L"\\big-logo.jpg";
+        assert(writeTestImage(bigPng, GUID_ContainerFormatPng, 2000, 800));
+        assert(writeTestImage(bigJpg, GUID_ContainerFormatJpeg, 2000, 800));
+        GameMessage game;
+        game.action = "game";
+        game.title = L"Test";
+        game.marquee = bigPng;
+        game.logo = bigJpg;
+        auto body = parse(gamePayload(game));
+        assert(takeArtworkErrors().empty());  // nothing was dropped
+        const std::string png = decodeBase64(body.get("marquee").get("base64").value());
+        assert(png.size() > 24 && png.compare(1, 3, "PNG") == 0);
+        const auto beU32 = [&](size_t at) {
+            return (uint32_t(uint8_t(png[at])) << 24) | (uint32_t(uint8_t(png[at + 1])) << 16) |
+                   (uint32_t(uint8_t(png[at + 2])) << 8) | uint32_t(uint8_t(png[at + 3]));
+        };
+        assert(beU32(16) == 1600 && beU32(20) == 640);  // IHDR width and height after scaling
+        const std::string jpg = decodeBase64(body.get("logo").get("base64").value());
+        assert(jpg.size() > 4 && uint8_t(jpg[0]) == 0xFF && uint8_t(jpg[1]) == 0xD8);
+        const std::wstring scaledJpg = dataDirectory() + L"\\scaled-logo.jpg";
+        writeFile(scaledJpg, jpg);
+        HBITMAP scaled = createThumbnail(scaledJpg, 112, 70);
+        assert(scaled);
+        DeleteObject(scaled);
+    }
 
     // Video thumbnails must keep orientation and row alignment (regression: decoder
     // buffers are padded to 16, which once sheared and flipped the picture).

@@ -66,6 +66,8 @@ HttpResult piRequest(const Settings& settings, const std::wstring& method,
                      const std::wstring& contentType = L"",
                      const std::wstring& extraHeader = L"", int timeoutMs = 8000);
 std::string gamePayload(const GameMessage& game);
+// Reasons why artwork was left out of the last payloads built on this thread; clears the list.
+std::vector<std::string> takeArtworkErrors();
 std::vector<std::string> gameWarnings(const std::string& response);
 std::string gesturePayload(const Settings& settings);
 // Tells the Pi which language its touch menu should use (the resolved UI language).

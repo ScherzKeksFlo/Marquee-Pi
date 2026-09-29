@@ -384,7 +384,10 @@ void App::pollLoop() {
                     if (gameVersion == version) pendingDefault = false;
                 } else if (sync && current) {
                     try {
-                        auto response = piRequest(copy, L"POST", L"/v1/game", gamePayload(*current),
+                        const std::string payload = gamePayload(*current);
+                        for (const auto& problem : takeArtworkErrors())
+                            logArtworkWarning("not sent: " + problem);
+                        auto response = piRequest(copy, L"POST", L"/v1/game", payload,
                                                   L"application/json; charset=utf-8");
                         for (const auto& warning : gameWarnings(response.body))
                             logArtworkWarning(warning);
