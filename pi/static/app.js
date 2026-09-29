@@ -137,12 +137,36 @@ function runGesture(kind) {
 const menu = document.getElementById("menu");
 const MENU_IDLE_MS = 20000;
 const VIEWS = [
-  ["marquee", "Marquee", () => true],
-  ["box_art", "Box Art", (s) => s.has_box_art],
-  ["logo", "Logo", (s) => s.has_logo],
-  ["controls", "Controls", (s) => s.has_controls],
-  ["default", "Standard", () => true]
+  ["marquee", "view_marquee", () => true],
+  ["box_art", "view_box_art", (s) => s.has_box_art],
+  ["logo", "view_logo", (s) => s.has_logo],
+  ["controls", "view_controls", (s) => s.has_controls],
+  ["default", "view_default", () => true]
 ];
+
+// Menu texts. The Windows app picks the language and the Pi reports it in the state.
+const TEXT = {
+  en: {
+    view_marquee: "Marquee", view_box_art: "Box Art", view_logo: "Logo", view_controls: "Controls",
+    view_default: "Default", section_view: "View", section_brightness: "Brightness", section_status: "Status",
+    arcade_pc: "Arcade PC", connected: "connected", disconnected: "not connected", address: "Address",
+    unknown: "unknown", game: "Game", version: "Version", system_button: "System …", system: "System",
+    back: "‹ Back", restart: "Restart", shutdown: "Shut down", yes: "Yes", cancel: "Cancel",
+    confirm_restart: "Really restart the Pi?", confirm_shutdown: "Really shut down the Pi?"
+  },
+  de: {
+    view_marquee: "Marquee", view_box_art: "Box Art", view_logo: "Logo", view_controls: "Controls",
+    view_default: "Standard", section_view: "Ansicht", section_brightness: "Helligkeit", section_status: "Status",
+    arcade_pc: "Arcade-PC", connected: "verbunden", disconnected: "nicht verbunden", address: "Adresse",
+    unknown: "unbekannt", game: "Spiel", version: "Version", system_button: "System …", system: "System",
+    back: "‹ Zurück", restart: "Neustart", shutdown: "Herunterfahren", yes: "Ja", cancel: "Abbrechen",
+    confirm_restart: "Pi wirklich neu starten?", confirm_shutdown: "Pi wirklich herunterfahren?"
+  }
+};
+
+function t(key) {
+  return (TEXT[currentState?.language] ?? TEXT.en)[key] ?? TEXT.en[key] ?? key;
+}
 let menuOpen = false;
 let menuInfo = null;
 let pendingPower = null;
@@ -190,34 +214,34 @@ function renderMenu() {
 
   const head = el("div", "head");
   if (menuPage === "system") {
-    head.appendChild(button("‹ Zurück", () => { setPending(null); setPage("main"); }, { className: "back" }));
-    head.appendChild(el("span", "title", "System"));
+    head.appendChild(button(t("back"), () => { setPending(null); setPage("main"); }, { className: "back" }));
+    head.appendChild(el("span", "title", t("system")));
     head.appendChild(button("✕", closeMenu, { className: "close" }));
     panel.appendChild(head);
     const power = el("div", "row big");
     if (pendingPower) {
-      const text = pendingPower === "reboot" ? "Pi wirklich neu starten?" : "Pi wirklich herunterfahren?";
+      const text = pendingPower === "reboot" ? t("confirm_restart") : t("confirm_shutdown");
       power.appendChild(el("div", "confirm", text));
-      power.appendChild(button("Ja", () => runPower(pendingPower), { className: "danger" }));
-      power.appendChild(button("Abbrechen", () => setPending(null)));
+      power.appendChild(button(t("yes"), () => runPower(pendingPower), { className: "danger" }));
+      power.appendChild(button(t("cancel"), () => setPending(null)));
     } else {
-      power.appendChild(button("Neustart", () => setPending("reboot"), { className: "danger" }));
-      power.appendChild(button("Herunterfahren", () => setPending("poweroff"), { className: "danger" }));
+      power.appendChild(button(t("restart"), () => setPending("reboot"), { className: "danger" }));
+      power.appendChild(button(t("shutdown"), () => setPending("poweroff"), { className: "danger" }));
     }
     panel.appendChild(power);
     menu.replaceChildren(panel);
     return;
   }
   head.appendChild(el("span", "title", "Marquee-Pi"));
-  if (info?.power_enabled) head.appendChild(button("System …", () => setPage("system"), { className: "system" }));
+  if (info?.power_enabled) head.appendChild(button(t("system_button"), () => setPage("system"), { className: "system" }));
   head.appendChild(button("✕", closeMenu, { className: "close" }));
   panel.appendChild(head);
 
-  panel.appendChild(el("div", "section", "Ansicht"));
+  panel.appendChild(el("div", "section", t("section_view")));
   const views = el("div", "row");
   for (const [name, label, available] of VIEWS) {
     const enabled = Boolean(state.game_title) && available(state);
-    views.appendChild(button(label, () => {
+    views.appendChild(button(t(label), () => {
       view = name;
       render();
       renderMenu();
@@ -226,7 +250,7 @@ function renderMenu() {
   panel.appendChild(views);
 
   if (info?.brightness?.supported) {
-    panel.appendChild(el("div", "section", "Helligkeit"));
+    panel.appendChild(el("div", "section", t("section_brightness")));
     const percent = info.brightness.percent;
     const row = el("div", "row");
     row.appendChild(button("−", () => changeBrightness(percent - 10)));
@@ -235,16 +259,16 @@ function renderMenu() {
     panel.appendChild(row);
   }
 
-  panel.appendChild(el("div", "section", "Status"));
+  panel.appendChild(el("div", "section", t("section_status")));
   const status = el("div", "status");
   const addRow = (label, value) => {
     status.appendChild(el("span", "", label));
     status.appendChild(el("span", "", value));
   };
-  addRow("Arcade-PC", info ? (info.client_connected ? "verbunden" : "nicht verbunden") : "…");
-  addRow("Adresse", info?.addresses?.length ? info.addresses.join("  ") : "unbekannt");
-  addRow("Spiel", state.game_title || "–");
-  addRow("Version", info?.app_version ?? "…");
+  addRow(t("arcade_pc"), info ? (info.client_connected ? t("connected") : t("disconnected")) : "…");
+  addRow(t("address"), info?.addresses?.length ? info.addresses.join("  ") : t("unknown"));
+  addRow(t("game"), state.game_title || "–");
+  addRow(t("version"), info?.app_version ?? "…");
   panel.appendChild(status);
 
   menu.replaceChildren(panel);
