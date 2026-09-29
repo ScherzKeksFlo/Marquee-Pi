@@ -81,6 +81,52 @@ jobs:
           check "program removed" test ! -e /opt/marquee-pi
           exit $fail
 
+  deb-debian:
+    # A real Debian 13 (the base of Raspberry Pi OS Trixie): apt must pull in every
+    # dependency of the package and the programs the scripts call must exist afterwards.
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - name: Prepare the container
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3 ca-certificates
+      - uses: actions/checkout@v4
+      - name: Build the Debian package
+        run: python3 packaging/deb/build_deb.py --output dist/deb
+      - name: Install with apt, check and purge
+        run: |
+          fail=0
+          check() {
+            description=$1; shift
+            if "$@" >/dev/null 2>&1; then echo "ok: $description"; else echo "::error::check failed: $description"; fail=1; fi
+          }
+          if ! apt-get install -y --no-install-recommends ./dist/deb/marquee-pi_*_all.deb > install.log 2>&1; then
+            tail -n 40 install.log
+            echo "::error::apt-get install failed: $(tail -n 8 install.log | tr '\n' '|')"
+            exit 1
+          fi
+          tail -n 25 install.log
+          check "package is installed" sh -c 'dpkg -s marquee-pi | grep -q "^Status: install ok installed"'
+          for program in python3 ffprobe fbi curl xset xrandr xinit Xorg xauth pkcheck openssl hostname awk systemctl chromium; do
+            check "dependency provides $program" command -v "$program"
+          done
+          check "service user exists" id marqueepi
+          check "config is root:marqueepi 640" test "$(stat -c '%U:%G %a' /etc/marquee-pi/config.json)" = "root:marqueepi 640"
+          check "token placeholder replaced" sh -c '! grep -q CHANGE_ME /etc/marquee-pi/config.json'
+          check "polkit rule installed" test -f /usr/share/polkit-1/rules.d/50-marquee-pi.rules
+          check "kiosk unit installed" test -f /usr/lib/systemd/system/marquee-pi-kiosk.service
+          check "server starts" python3 -c "import sys; sys.path.insert(0, '/opt/marquee-pi'); import marquee_pi"
+          if ! apt-get purge -y marquee-pi > purge.log 2>&1; then
+            cat purge.log
+            echo "::error::apt-get purge failed: $(tail -n 8 purge.log | tr '\n' '|')"
+            exit 1
+          fi
+          check "service user removed" sh -c '! id marqueepi'
+          check "config removed" test ! -e /etc/marquee-pi
+          check "program removed" test ! -e /opt/marquee-pi
+          exit $fail
+
   windows-native:
     runs-on: windows-latest
     steps:

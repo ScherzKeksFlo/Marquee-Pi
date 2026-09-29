@@ -70,8 +70,11 @@ class DebPackageTests(unittest.TestCase):
             self.assertIn(field, self.fields)
         self.assertEqual(self.fields["Package"], "marquee-pi")
         self.assertEqual(self.fields["Architecture"], "all")
-        for dependency in ("python3", "ffmpeg", "fbi", "xinit", "polkitd | policykit-1", "adduser"):
+        for dependency in ("python3", "ffmpeg", "fbi", "curl", "chromium | chromium-browser", "xserver-xorg",
+                           "xinit", "x11-xserver-utils", "xauth", "polkitd | policykit-1", "openssl",
+                           "adduser", "hostname", "systemd"):
             self.assertIn(dependency, self.fields["Depends"])
+        self.assertIn("libraspberrypi-bin", self.fields["Recommends"])
         self.assertGreater(int(self.fields["Installed-Size"]), 0)
 
     def test_everything_is_owned_by_root_with_sane_modes(self):

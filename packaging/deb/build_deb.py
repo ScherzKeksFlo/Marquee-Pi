@@ -33,8 +33,10 @@ HOMEPAGE = "https://github.com/ScherzKeksFlo/Marquee-Pi"
 DEPENDS = [
     "python3", "ffmpeg", "fbi", "curl", "chromium | chromium-browser", "xserver-xorg",
     "xserver-xorg-input-libinput", "xinit", "x11-xserver-utils", "xauth",
-    "polkitd | policykit-1", "openssl", "adduser",
+    "polkitd | policykit-1", "openssl", "adduser", "hostname", "systemd",
 ]
+# vcgencmd (marquee-display-test) comes from a Raspberry Pi OS package that Debian does not have.
+RECOMMENDS = ["libraspberrypi-bin"]
 DESCRIPTION = (
     "Marquee display for arcade cabinets on a Raspberry Pi",
     "Shows game marquees, box art and controls on a small touch display attached",
@@ -180,6 +182,7 @@ def build(output: Path, version: str | None = None) -> Path:
         f"Maintainer: {MAINTAINER}",
         f"Installed-Size: {installed_kib}",
         f"Depends: {', '.join(DEPENDS)}",
+        f"Recommends: {', '.join(RECOMMENDS)}",
         "Section: misc",
         "Priority: optional",
         f"Homepage: {HOMEPAGE}",
