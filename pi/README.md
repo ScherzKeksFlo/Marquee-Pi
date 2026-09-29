@@ -4,6 +4,10 @@ Die vollständige Anleitung für eine frische Raspberry Pi OS Lite-Installation 
 
 Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte API. Die Anzeige lädt ein auf dem Pi gespeichertes Standardbild oder Video, zeigt Spielgrafiken und verarbeitet Tippen sowie vier Wischrichtungen. Boot-Splash und Shutdown-Medium werden ebenfalls über das Windows-Tool hochgeladen und dauerhaft auf dem Pi gespeichert.
 
+## Touchmenü
+
+Ein langes Drücken (ca. 0,8 s, Finger ruhig halten) öffnet ein Overlay-Menü direkt am Display. Es bietet die Ansichten Marquee, Box Art, Logo, Controls und Standard, die Helligkeit in 10-%-Schritten (mindestens 5 %, bleibt nach einem Neustart erhalten), eine Statusanzeige (Verbindung zum Arcade-PC, IP-Adressen, Spiel, Version) sowie Neustart und Herunterfahren mit Bestätigung. Nach 20 s ohne Eingabe schließt sich das Menü von selbst. Die zugehörigen Endpunkte `/ui/system`, `/ui/brightness` und `/ui/power` sind wie alle `/ui/`-Pfade nur von `127.0.0.1` aus erreichbar. Neustart und Herunterfahren nutzen dieselbe Polkit-Prüfung wie die API und erfordern `power_commands_enabled`. Für die Helligkeit braucht der Dienst Schreibzugriff auf `/sys/class/backlight/*/brightness`; die Service-Vorlage gibt dafür die Gruppe `video` und den Pfad `/sys/devices/platform/rpi_backlight` frei.
+
 ## Voraussetzungen
 
 - Raspberry Pi OS Lite mit X11, `xinit`, `xset` (`x11-xserver-utils`) und Chromium (am Pi 3 B+ mit Trixie/Python 3.13 geprüft)

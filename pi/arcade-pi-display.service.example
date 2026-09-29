@@ -10,7 +10,8 @@ Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/arcade-pi-display
+ReadWritePaths=/var/lib/arcade-pi-display -/sys/devices/platform/rpi_backlight
+SupplementaryGroups=video
 PrivateTmp=true
 
 [Install]
