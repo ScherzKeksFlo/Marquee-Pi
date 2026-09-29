@@ -263,5 +263,132 @@ class ApiTests(unittest.TestCase):
                 thread.join(timeout=3)
 
 
+def fake_backlight(root: Path, raw: int = 255, maximum: int = 255) -> Path:
+    device = root / "rpi_backlight"
+    device.mkdir(parents=True)
+    (device / "brightness").write_text(str(raw))
+    (device / "max_brightness").write_text(str(maximum))
+    return device
+
+
+class MenuStateTests(unittest.TestCase):
+    def test_brightness_is_clamped_scaled_persisted_and_restored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory) / "data"
+            device = fake_backlight(Path(directory) / "backlight")
+            root = device.parent
+            state = DisplayState(data_dir, 60, root)
+            self.assertEqual(state.brightness(), {"supported": True, "percent": 100})
+            self.assertEqual(state.set_brightness(50), 50)
+            self.assertEqual((device / "brightness").read_text(), "128")
+            self.assertEqual(state.set_brightness(0), 5)
+            self.assertEqual((device / "brightness").read_text(), "13")
+            self.assertEqual(state.set_brightness(500), 100)
+            state.set_brightness(40)
+            (device / "brightness").write_text("255")
+            DisplayState(data_dir, 60, root)
+            self.assertEqual((device / "brightness").read_text(), "102")
+            for invalid in ("50", 50.5, True, None):
+                with self.assertRaises(ValueError):
+                    state.set_brightness(invalid)
+
+    def test_brightness_unavailable_without_backlight(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = DisplayState(Path(directory) / "data", 60, Path(directory) / "missing")
+            self.assertEqual(state.brightness(), {"supported": False, "percent": None})
+            with self.assertRaises(ValueError):
+                state.set_brightness(50)
+
+    def test_client_connection_expires(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = DisplayState(Path(directory), 60, Path(directory) / "missing")
+            self.assertFalse(state.client_connected())
+            state.touch_client()
+            self.assertTrue(state.client_connected())
+            state.last_client_contact -= 60
+            self.assertFalse(state.client_connected())
+
+
+class MenuApiTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        root = Path(self.directory.name)
+        self.device = fake_backlight(root / "backlight")
+        self.state = DisplayState(root / "data", 60, root / "backlight")
+        self.server = Server(("127.0.0.1", 0), self.state, "a" * 32, power_commands_enabled=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.base = f"http://127.0.0.1:{self.server.server_port}"
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=3)
+        self.directory.cleanup()
+
+    def post(self, path, payload):
+        request = Request(self.base + path, data=json.dumps(payload).encode(), method="POST")
+        return urlopen(request, timeout=3)
+
+    def test_system_status_reports_connection_and_brightness(self):
+        with patch("arcade_pi.local_addresses", return_value=["192.168.99.149"]):
+            with urlopen(self.base + "/ui/system", timeout=3) as response:
+                info = json.load(response)
+            self.assertFalse(info["client_connected"])
+            self.assertEqual(info["addresses"], ["192.168.99.149"])
+            self.assertEqual(info["brightness"], {"supported": True, "percent": 100})
+            self.assertTrue(info["power_enabled"])
+            urlopen(Request(self.base + "/v1/status", headers={"X-Arcade-Token": "a" * 32}),
+                    timeout=3).close()
+            with urlopen(self.base + "/ui/system", timeout=3) as response:
+                self.assertTrue(json.load(response)["client_connected"])
+
+    def test_unauthorized_request_does_not_count_as_client_contact(self):
+        with self.assertRaises(HTTPError):
+            urlopen(Request(self.base + "/v1/status", headers={"X-Arcade-Token": "wrong"}), timeout=3)
+        self.assertFalse(self.state.client_connected())
+
+    def test_brightness_endpoint_validates_input(self):
+        with self.post("/ui/brightness", {"percent": 60}) as response:
+            self.assertEqual(json.load(response)["percent"], 60)
+        self.assertEqual((self.device / "brightness").read_text(), "153")
+        for payload in ({"percent": "60"}, {}, []):
+            with self.assertRaises(HTTPError) as result:
+                self.post("/ui/brightness", payload)
+            self.assertEqual(result.exception.code, 400)
+
+    def test_menu_power_requires_valid_action_and_polkit(self):
+        with self.assertRaises(HTTPError) as result:
+            self.post("/ui/power", {"action": "halt"})
+        self.assertEqual(result.exception.code, 400)
+        with patch("arcade_pi.process_identity", return_value="1,2,3"), \
+             patch("arcade_pi.subprocess.run") as run:
+            run.return_value.returncode = 1
+            with self.assertRaises(HTTPError) as result:
+                self.post("/ui/power", {"action": "reboot"})
+            self.assertEqual(result.exception.code, 503)
+            self.assertEqual(run.call_count, 1)
+
+    def test_menu_reboot_and_poweroff_use_systemctl(self):
+        for action, expected_delay in (("reboot", 0.5), ("poweroff", self.state.shutdown_delay())):
+            with patch("arcade_pi.process_identity", return_value="1,2,3"), \
+                 patch("arcade_pi.subprocess.run") as run, \
+                 patch("arcade_pi.threading.Timer") as timer:
+                run.return_value.returncode = 0
+                with self.post("/ui/power", {"action": action}) as response:
+                    self.assertEqual(response.status, 200)
+                self.assertEqual(timer.call_args.args[0], expected_delay)
+                timer.return_value.start.assert_called_once()
+                timer.call_args.args[1]()
+                self.assertEqual(run.call_args.args[0], ["systemctl", action])
+        self.assertTrue(self.state.describe()["shutting_down"])
+
+    def test_menu_power_disabled_when_not_configured(self):
+        self.server.power_commands_enabled = False
+        with self.assertRaises(HTTPError) as result:
+            self.post("/ui/power", {"action": "reboot"})
+        self.assertEqual(result.exception.code, 503)
+
+
 if __name__ == "__main__":
     unittest.main()

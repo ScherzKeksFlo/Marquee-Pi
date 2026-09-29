@@ -101,9 +101,26 @@ def process_identity() -> str:
     return f"{os.getpid()},{fields[19]},{os.getuid()}"
 
 
+MIN_BRIGHTNESS_PERCENT = 5
+CLIENT_CONNECTED_SECONDS = 10.0
+
+
+def local_addresses() -> list[str]:
+    """Return the Pi's IPv4 addresses for the status menu; empty when unknown."""
+    try:
+        result = subprocess.run(["hostname", "-I"], capture_output=True, text=True, errors="replace",
+                                timeout=2, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return [part for part in result.stdout.split() if part.count(".") == 3][:4]
+
+
 class DisplayState:
-    def __init__(self, data_dir: Path, timeout_seconds: int):
+    def __init__(self, data_dir: Path, timeout_seconds: int,
+                 backlight_root: Path = Path("/sys/class/backlight")):
         self.lock = threading.RLock()
+        self.backlight_root = backlight_root
+        self.last_client_contact = 0.0
         self.upload_lock = threading.Lock()
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -120,6 +137,72 @@ class DisplayState:
         self.gesture_actions = self._load_gestures()
         self.gesture_events: list[dict] = []
         self.next_gesture_id = 1
+        self._restore_brightness()
+
+    def touch_client(self) -> None:
+        self.last_client_contact = time.monotonic()
+
+    def client_connected(self) -> bool:
+        contact = self.last_client_contact
+        return contact > 0 and time.monotonic() - contact <= CLIENT_CONNECTED_SECONDS
+
+    def _backlight(self) -> Path | None:
+        try:
+            for candidate in sorted(self.backlight_root.iterdir()):
+                if (candidate / "brightness").is_file() and (candidate / "max_brightness").is_file():
+                    return candidate
+        except OSError:
+            pass
+        return None
+
+    def brightness(self) -> dict:
+        device = self._backlight()
+        try:
+            maximum = int((device / "max_brightness").read_text().strip())
+            raw = int((device / "brightness").read_text().strip())
+            if maximum <= 0:
+                raise ValueError
+        except (AttributeError, OSError, ValueError, TypeError):
+            return {"supported": False, "percent": None}
+        return {"supported": True, "percent": max(0, min(100, round(raw * 100 / maximum)))}
+
+    def set_brightness(self, percent: int, persist: bool = True) -> int:
+        if isinstance(percent, bool) or not isinstance(percent, int):
+            raise ValueError("Brightness must be an integer")
+        percent = max(MIN_BRIGHTNESS_PERCENT, min(100, percent))
+        device = self._backlight()
+        if device is None:
+            raise ValueError("Brightness control unavailable")
+        try:
+            maximum = int((device / "max_brightness").read_text().strip())
+            (device / "brightness").write_text(str(max(1, round(maximum * percent / 100))))
+        except (OSError, ValueError) as exc:
+            raise ValueError("Brightness control unavailable") from exc
+        if persist:
+            pending = self.data_dir / "brightness.json.pending"
+            try:
+                pending.write_text(json.dumps({"percent": percent}), encoding="utf-8")
+                os.replace(pending, self.data_dir / "brightness.json")
+            except OSError:
+                pass
+            finally:
+                unlink_if_exists(pending)
+        return percent
+
+    def _restore_brightness(self) -> None:
+        try:
+            saved = json.loads((self.data_dir / "brightness.json").read_text(encoding="utf-8"))
+            self.set_brightness(saved["percent"], persist=False)
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+
+    def system_info(self) -> dict:
+        return {
+            "app_version": APP_VERSION,
+            "addresses": local_addresses(),
+            "client_connected": self.client_connected(),
+            "brightness": self.brightness(),
+        }
 
     def _load_media_slot(self, manifest_name: str) -> tuple[Path | None, float | None]:
         try:
@@ -358,8 +441,35 @@ class Handler(BaseHTTPRequestHandler):
     def _authorized(self) -> bool:
         provided = self.headers.get("X-Arcade-Token", "")
         allowed = self.server.allowed_clients
-        return ((not allowed or self.client_address[0] in allowed) and bool(provided) and
-                hmac.compare_digest(provided.encode("utf-8"), self.server.token.encode("utf-8")))
+        ok = ((not allowed or self.client_address[0] in allowed) and bool(provided) and
+              hmac.compare_digest(provided.encode("utf-8"), self.server.token.encode("utf-8")))
+        if ok:
+            self.server.state.touch_client()
+        return ok
+
+    def _power(self, action: str) -> None:
+        """Authorise via polkit, then reboot or power off; sends the HTTP response."""
+        if not self.server.power_commands_enabled:
+            self._json(503, {"error": "Power commands are not configured"})
+            return
+        policy = "org.freedesktop.login1.reboot" if action == "reboot" else "org.freedesktop.login1.power-off"
+        try:
+            authorization = subprocess.run(
+                ["pkcheck", "--action-id", policy, "--process", process_identity()],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+        except subprocess.TimeoutExpired:
+            self._json(503, {"error": "Power authorization timed out"})
+            return
+        if authorization.returncode != 0:
+            self._json(503, {"error": "Power authorization unavailable"})
+            return
+        if action == "poweroff":
+            self.server.state.show_shutdown()
+        delay = self.server.state.shutdown_delay() if action == "poweroff" else 0.5
+        threading.Timer(delay, lambda: subprocess.run(
+            ["systemctl", action], check=False
+        )).start()
+        self._json(200, {"ok": True})
 
     def _send(self, code: int, body: bytes, content_type: str,
               cache_control: str = "no-store", headers: dict | None = None) -> None:
@@ -476,6 +586,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/ui/state":
             self._json(200, self.server.state.describe())
             return
+        if path == "/ui/system":
+            self._json(200, {**self.server.state.system_info(),
+                             "power_enabled": self.server.power_commands_enabled})
+            return
         if path == "/ui/default":
             with self.server.state.lock:
                 selected = self.server.state.active_file
@@ -520,6 +634,25 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.server.state.show_shutdown()
             self._json(200, {"ok": True})
+            return
+        if path in ("/ui/brightness", "/ui/power"):
+            if not self._local():
+                self._json(403, {"error": "Local display only"})
+                return
+            try:
+                payload = json.loads(self._body())
+                if not isinstance(payload, dict):
+                    raise ValueError("Payload must be an object")
+                if path == "/ui/brightness":
+                    percent = self.server.state.set_brightness(payload.get("percent"))
+                    self._json(200, {"ok": True, "percent": percent})
+                    return
+                action = payload.get("action")
+                if action not in ("reboot", "poweroff"):
+                    raise ValueError("Invalid power action")
+                self._power(action)
+            except (ValueError, json.JSONDecodeError) as exc:
+                self._json(400, {"error": str(exc)})
             return
         if not path.startswith("/v1/") or not self._authorized():
             self._json(401, {"error": "Unauthorized"})
@@ -580,23 +713,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/v1/reload":
                 self.server.state.reload()
             elif path in ("/v1/reboot", "/v1/shutdown"):
-                if not self.server.power_commands_enabled:
-                    self._json(503, {"error": "Power commands are not configured"})
-                    return
-                action = "reboot" if path.endswith("reboot") else "poweroff"
-                policy = "org.freedesktop.login1.reboot" if action == "reboot" else "org.freedesktop.login1.power-off"
-                authorization = subprocess.run(
-                    ["pkcheck", "--action-id", policy, "--process", process_identity()],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
-                if authorization.returncode != 0:
-                    self._json(503, {"error": "Power authorization unavailable"})
-                    return
-                if action == "poweroff":
-                    self.server.state.show_shutdown()
-                delay = self.server.state.shutdown_delay() if action == "poweroff" else 0.5
-                threading.Timer(delay, lambda: subprocess.run(
-                    ["systemctl", action], check=False
-                )).start()
+                self._power("reboot" if path.endswith("reboot") else "poweroff")
+                return
             else:
                 self._json(404, {"error": "Not found"})
                 return
