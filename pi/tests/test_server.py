@@ -118,6 +118,35 @@ class StateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 state.set_gestures({"swipe-up": "shutdown"})
 
+    def test_long_press_is_a_configurable_gesture_defaulting_to_touch_menu(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            state = DisplayState(data_dir, 60)
+            self.assertEqual(state.gesture_actions["long-press"], "touch_menu")
+            self.assertEqual(state.gesture_actions["swipe-up"], "none")
+            # Clients that only know the four swipes must not take the menu away.
+            state.set_gestures({"swipe-left": "box_art"})
+            self.assertEqual(state.gesture_actions["long-press"], "touch_menu")
+            # The menu can move to a swipe, freeing long press for another action.
+            state.set_gestures({"swipe-down": "touch_menu", "long-press": "retroarch_menu"})
+            restored = DisplayState(data_dir, 60)
+            self.assertEqual(restored.gesture_actions["swipe-down"], "touch_menu")
+            self.assertEqual(restored.gesture_actions["long-press"], "retroarch_menu")
+            restored.set_game("Test", {})
+            self.assertTrue(restored.record_gesture("long-press"))
+            self.assertEqual(restored.events_after(0)["events"],
+                             [{"id": 1, "action": "retroarch_menu"}])
+            self.assertFalse(restored.record_gesture("swipe-down"))
+            restored.set_gestures({"long-press": "none"})
+            self.assertEqual(restored.gesture_actions["long-press"], "none")
+            with self.assertRaises(ValueError):
+                restored.set_gestures({"double-tap": "touch_menu"})
+            (data_dir / "gestures.json").write_text(
+                json.dumps({"swipe-left": "logo"}), encoding="utf-8")
+            legacy = DisplayState(data_dir, 60)
+            self.assertEqual(legacy.gesture_actions["swipe-left"], "logo")
+            self.assertEqual(legacy.gesture_actions["long-press"], "touch_menu")
+
     def test_corrupt_active_file_uses_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
             state = DisplayState(Path(directory), 60)

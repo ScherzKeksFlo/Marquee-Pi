@@ -32,8 +32,12 @@ SUPPORTED = {
 }
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
-GESTURES = ("swipe-down", "swipe-up", "swipe-right", "swipe-left")
-GESTURE_ACTIONS = ("none", "marquee", "box_art", "logo", "controls", "default", "retroarch_menu")
+GESTURES = ("swipe-down", "swipe-up", "swipe-right", "swipe-left", "long-press")
+GESTURE_ACTIONS = ("none", "marquee", "box_art", "logo", "controls", "default",
+                   "retroarch_menu", "touch_menu")
+# The touch menu stays on long press unless a client assigns it elsewhere; older
+# clients that only know the four swipes therefore never lose access to it.
+DEFAULT_GESTURE_ACTIONS = {kind: "touch_menu" if kind == "long-press" else "none" for kind in GESTURES}
 STATIC_MIME = {
     "index.html": "text/html; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
@@ -225,11 +229,11 @@ class DisplayState:
         try:
             actions = json.loads((self.data_dir / "gestures.json").read_text(encoding="utf-8"))
             if isinstance(actions, dict):
-                return {kind: actions.get(kind, "none") if actions.get(kind) in GESTURE_ACTIONS
-                        else "none" for kind in GESTURES}
+                return {kind: actions[kind] if actions.get(kind) in GESTURE_ACTIONS
+                        else DEFAULT_GESTURE_ACTIONS[kind] for kind in GESTURES}
         except (OSError, ValueError):
             pass
-        return {kind: "none" for kind in GESTURES}
+        return DEFAULT_GESTURE_ACTIONS.copy()
 
     def set_gestures(self, actions: dict) -> None:
         if not isinstance(actions, dict) or any(
@@ -237,7 +241,7 @@ class DisplayState:
             for kind, action in actions.items()
         ):
             raise ValueError("Invalid gesture configuration")
-        configured = {kind: actions.get(kind, "none") for kind in GESTURES}
+        configured = {kind: actions.get(kind, DEFAULT_GESTURE_ACTIONS[kind]) for kind in GESTURES}
         pending = self.data_dir / "gestures.json.pending"
         with self.upload_lock:
             try:
