@@ -16,6 +16,9 @@ Follows `1.0.0-preview.2`. It is tested on one setup (Raspberry Pi 3 B+ with the
 
 - Marquees and logos wider than 1600 px never reached the Pi because scaling failed silently. Artwork that cannot be prepared is now listed in `artwork-warnings.log`.
 - Boot no longer stalls for 90 s waiting for `/dev/fb0`.
+- Old artwork could show up after a Pi restart because the browser cached media by a counter that restarts at 1. Media are now cached by content.
+- If rescaling large artwork fails, the original image is sent instead of nothing.
+- Video playback no longer resets the connection when a file cannot be opened, and an `ffprobe` timeout is reported as an MP4 check error instead of a power error.
 - Video thumbnails were sheared and upside down for clips with padded decoder buffers.
 
 ### Breaking changes
