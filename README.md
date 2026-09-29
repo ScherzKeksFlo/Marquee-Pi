@@ -36,7 +36,7 @@ Die Windows-Pi-Verbindung verwendet HTTP. Auch der API-Token wird dabei unversch
 
 Der automatische Pi-Shutdown wurde sowohl beim Ausschalten über Big Box als auch über das normale Windows-Startmenü praktisch geprüft. Pi-Neustart und Pi-Shutdown über das Tray-Menü sind getrennte Funktionen.
 
-Beim ersten Zielsystem benötigte die über einen eigenen USB-Hub versorgte Displayplatine nach einem Kaltstart zusätzliche Zeit. `bootcode_delay=5` wurde mit drei aufeinanderfolgenden Kaltstarts erfolgreich geprüft; das Testskript bietet zusätzlich einen Warmstart als Rückfalllösung. Details stehen in der [Pi-Installationsanleitung](pi/INSTALL.md).
+Beim ersten Zielsystem benötigte die über einen eigenen USB-Hub versorgte Displayplatine nach einem Kaltstart zusätzliche Zeit. Nach später erneut aufgetretener, sporadischer Nichterkennung wurde `bootcode_delay=10` zusammen mit einer festen DSI-Auswahl verwendet; das Testskript bietet zusätzlich einen Warmstart als Rückfalllösung. Details stehen in der [Pi-Installationsanleitung](pi/INSTALL.md).
 
 ## Hardware des ersten Zielsystems
 

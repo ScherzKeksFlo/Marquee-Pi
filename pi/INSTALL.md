@@ -139,16 +139,24 @@ sudo marquee-display-test reset
 
 Fehlt nach einem Kaltstart `card0-DSI-1` und erscheint stattdessen nur `Composite-1`, war die Displayplatine bei der frühen Firmwareerkennung möglicherweise noch nicht bereit. Auf dem getesteten Pi wurde das 7-Zoll-Display über einen separat versorgten USB-Hub gespeist. Ein unveränderter FKMS-Warmstart erkannte das Display zuverlässig.
 
-Als dauerhafte Lösung die vorhandene `/boot/firmware/config.txt` sichern und `bootcode_delay=5` direkt in diese Datei eintragen:
+Als dauerhafte Lösung die vorhandene `/boot/firmware/config.txt` sichern und `bootcode_delay=10` direkt in diese Datei eintragen:
 
 ```ini
-bootcode_delay=5
+bootcode_delay=10
 display_auto_detect=1
 dtoverlay=vc4-fkms-v3d
 #disable_fw_kms_setup=1
 ```
 
-`bootcode_delay` gibt der Displayplatine vor der Erkennung fünf Sekunden zusätzliche Startzeit. Diese Konfiguration wurde auf dem Zielsystem mit drei aufeinanderfolgenden Kaltstarts nach jeweils 10 bis 20 Sekunden vollständiger Stromtrennung erfolgreich geprüft.
+`bootcode_delay` gibt der Displayplatine vor der Erkennung zehn Sekunden zusätzliche Startzeit. Fünf Sekunden bestanden zunächst drei Kaltstarts, später trat die Nichterkennung jedoch erneut auf. Deshalb verwendet das Zielsystem inzwischen zehn Sekunden.
+
+Wenn FKMS trotz erkanntem DSI den 720×480-Composite-Ausgang als primären Framebuffer verwendet, die aktuelle Kernel-Befehlszeile zuerst sichern. Anschließend in derselben einzelnen Zeile von `/boot/firmware/cmdline.txt` ergänzen:
+
+```text
+video=Composite-1:d video=DSI-1:800x480@60
+```
+
+Vor dem Neustart prüfen, dass die Zeile weiterhin den vorhandenen `root=`-Parameter enthält. Auf dem Zielsystem führte diese Einstellung zu `DSI-1 connected primary 800x480` und `Composite-1 disconnected`. Das Quiet-Boot-Skript behält beide `video=`-Parameter bei.
 
 Status prüfen mit:
 
@@ -161,7 +169,7 @@ sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr
 
 Im Fehlerfall kann `sudo marquee-display-test reset` als Rückfalllösung verwendet werden. Fehlt DSI vollständig, startet das Skript den Pi einmal warm neu, während die Displayplatine am eingeschalteten Hub versorgt bleibt.
 
-Ein Wechsel auf vollständiges KMS war auf dem Testgerät keine Lösung. Die feste Konfiguration mit `vc4-kms-v3d`, `vc4-kms-dsi-7inch`, `ignore_lcd=1` und `disable_touchscreen=1` erkannte zwar DSI und die Backlight-Schnittstelle, das reale Display blieb jedoch schwarz. Kernelmeldungen zeigten I/O-Fehler beim Aktivieren der Hintergrundbeleuchtung und beim Touchcontroller. FKMS mit `bootcode_delay=5` bleibt daher die getestete Konfiguration für dieses Gerät. Andere Pi-Modelle und Displayvarianten können KMS benötigen.
+Ein Wechsel auf vollständiges KMS war auf dem Testgerät keine Lösung. Die feste Konfiguration mit `vc4-kms-v3d`, `vc4-kms-dsi-7inch`, `ignore_lcd=1` und `disable_touchscreen=1` erkannte zwar DSI und die Backlight-Schnittstelle, das reale Display blieb jedoch schwarz. Kernelmeldungen zeigten I/O-Fehler beim Aktivieren der Hintergrundbeleuchtung und beim Touchcontroller. FKMS mit `bootcode_delay=10` und der festen DSI-Auswahl bleibt daher die getestete Konfiguration für dieses Gerät. Andere Pi-Modelle und Displayvarianten können KMS benötigen.
 
 ## Standardvideo auf einem Pi 3 B+
 
