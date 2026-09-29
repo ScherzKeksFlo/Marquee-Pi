@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "thumbnail.hpp"
 #include <windows.h>
 #include <commctrl.h>
 #include <commdlg.h>
@@ -9,6 +10,7 @@
 #include <chrono>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <thread>
 #include <vector>
 #include <algorithm>
@@ -28,14 +30,13 @@ enum MenuId {
 };
 enum SettingId {
     S_URL = 2001, S_TOKEN, S_SHOW_TOKEN, S_HELP, S_HOTKEY, S_RETRO_MODE, S_RETRO_PORT,
-    S_STARTUP, S_MEDIA, S_OPEN_INI, S_SAVE, S_CANCEL,
+    S_STARTUP, S_OPEN_INI, S_SAVE, S_CANCEL,
     S_GESTURE0 = 2020,
     S_TABS = 2040
 };
 enum MediaId { D_LIST = 3001, D_ADD, D_PREVIEW, D_ACTIVATE, D_BOOT, D_SHUTDOWN, D_REMOVE };
 struct StatusUpdate { bool connected; std::wstring title; };
 struct SettingsWindow;
-struct MediaWindow;
 class App;
 static App* currentApp = nullptr;
 static const wchar_t* ACTION_LABELS[] = {
@@ -53,7 +54,9 @@ static const wchar_t* GESTURE_LABELS[] = {
     L"Langer Druck", L"Oben nach unten", L"Unten nach oben", L"Links nach rechts", L"Rechts nach links"
 };
 static constexpr int GESTURE_COUNT = int(sizeof(GESTURE_IDS) / sizeof(GESTURE_IDS[0]));
-static constexpr int SETTINGS_PAGES = 4;
+enum SettingsPage { PAGE_CONNECTION, PAGE_GESTURES, PAGE_MEDIA, PAGE_RETROARCH, PAGE_GENERAL, SETTINGS_PAGES };
+static constexpr int THUMB_W = 112, THUMB_H = 70, MEDIA_ITEM_HEIGHT = 78;
+constexpr UINT WM_SELECT_PAGE = WM_APP + 30, WM_THUMB = WM_APP + 31;
 
 static void alert(HWND owner, const std::wstring& message, const wchar_t* title = L"Marquee-Pi") {
     MessageBoxW(owner, message.c_str(), title, MB_OK | MB_ICONINFORMATION);
@@ -161,7 +164,7 @@ static std::wstring recentShutdownType(FILETIME startedUtc) {
 }
 class App {
 public:
-    HWND hwnd = nullptr, settingsWindow = nullptr, mediaWindow = nullptr;
+    HWND hwnd = nullptr, settingsWindow = nullptr;
     HICON onlineIcon = nullptr, offlineIcon = nullptr;
     Settings settings;
     std::mutex mutex;
@@ -184,8 +187,8 @@ public:
     void setStatus(const StatusUpdate& update);
     void menu();
     void command(int id);
-    void showSettings();
-    void showMedia();
+    void showSettings(int page = PAGE_CONNECTION);
+    void showMedia() { showSettings(PAGE_MEDIA); }
     void reloadSettings();
     void onGame(GameMessage message);
     void pollLoop();
@@ -199,7 +202,6 @@ public:
 
 static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp);
 static LRESULT CALLBACK settingsProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp);
-static LRESULT CALLBACK mediaProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp);
 
 bool App::start(HINSTANCE instance) {
     WNDCLASSW klass{};
@@ -476,13 +478,35 @@ void App::onShutdown() {
     }
 }
 
+struct ThumbResult { std::wstring key; HBITMAP bitmap; };
+
 struct SettingsWindow {
+    struct MediaEntry { std::wstring name, key; uintmax_t size = 0; };
+
     App* app = nullptr;
+    int initialPage = PAGE_CONNECTION;
     HWND hwnd = nullptr, tabs = nullptr, url = nullptr, token = nullptr, hotkey = nullptr;
     HWND retroMode = nullptr, retroPort = nullptr, autostart = nullptr, showToken = nullptr;
-    HWND gestures[GESTURE_COUNT]{};
+    HWND gestures[GESTURE_COUNT]{}, mediaList = nullptr;
     std::vector<HWND> pages[SETTINGS_PAGES];
-    explicit SettingsWindow(App* owner) : app(owner) {}
+
+    // Media tab state. Thumbnails are rendered on worker threads and cached by
+    // name, size and modification time; only the UI thread touches these members.
+    std::vector<MediaEntry> entries;
+    std::wstring standardName, bootName, shutdownName;
+    std::map<std::wstring, HBITMAP> thumbnails;
+    std::set<std::wstring> thumbnailFailed, thumbnailPending;
+    std::vector<std::thread> workers;
+    std::atomic<bool> stopping{false};
+    HFONT boldFont = nullptr;
+
+    SettingsWindow(App* owner, int page) : app(owner), initialPage(page) {}
+    ~SettingsWindow() {
+        stopping = true;
+        for (auto& worker : workers) if (worker.joinable()) worker.join();
+        for (auto& pair : thumbnails) DeleteObject(pair.second);
+        if (boldFont) DeleteObject(boldFont);
+    }
 
     // Adds a control to one tab page; pages other than the visible one are hidden.
     HWND add(int page, const wchar_t* type, const wchar_t* title, DWORD style,
@@ -502,11 +526,15 @@ struct SettingsWindow {
     void create() {
         Settings current;
         { std::lock_guard<std::mutex> guard(app->mutex); current = app->settings; }
+        LOGFONTW font{};
+        GetObjectW(GetStockObject(DEFAULT_GUI_FONT), sizeof(font), &font);
+        font.lfWeight = FW_BOLD;
+        boldFont = CreateFontIndirectW(&font);
         tabs = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_TABSTOP,
-                               10, 10, 685, 340, hwnd, (HMENU)(INT_PTR)S_TABS,
+                               10, 10, 685, 410, hwnd, (HMENU)(INT_PTR)S_TABS,
                                GetModuleHandleW(nullptr), nullptr);
         SendMessageW(tabs, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
-        const wchar_t* pageNames[SETTINGS_PAGES] = {L"Verbindung", L"Gesten", L"RetroArch", L"Allgemein"};
+        const wchar_t* pageNames[SETTINGS_PAGES] = {L"Verbindung", L"Gesten", L"Medien", L"RetroArch", L"Allgemein"};
         for (int i = 0; i < SETTINGS_PAGES; ++i) {
             TCITEMW item{};
             item.mask = TCIF_TEXT;
@@ -515,23 +543,24 @@ struct SettingsWindow {
         }
 
         // Verbindung
-        add(0, L"STATIC", L"Pi-Adresse", 0, 25, 63, 160, 22);
-        url = add(0, L"EDIT", current.piUrl.c_str(), WS_BORDER | ES_AUTOHSCROLL, 190, 60, 490, 25, S_URL);
-        add(0, L"STATIC", L"Zugriffstoken", 0, 25, 98, 160, 22);
-        token = add(0, L"EDIT", current.token.c_str(), WS_BORDER | ES_AUTOHSCROLL | ES_PASSWORD,
+        add(PAGE_CONNECTION, L"STATIC", L"Pi-Adresse", 0, 25, 63, 160, 22);
+        url = add(PAGE_CONNECTION, L"EDIT", current.piUrl.c_str(), WS_BORDER | ES_AUTOHSCROLL, 190, 60, 490, 25, S_URL);
+        add(PAGE_CONNECTION, L"STATIC", L"Zugriffstoken", 0, 25, 98, 160, 22);
+        token = add(PAGE_CONNECTION, L"EDIT", current.token.c_str(), WS_BORDER | ES_AUTOHSCROLL | ES_PASSWORD,
                     190, 95, 490, 25, S_TOKEN);
-        showToken = add(0, L"BUTTON", L"Token anzeigen", BS_AUTOCHECKBOX, 190, 127, 135, 26, S_SHOW_TOKEN);
-        add(0, L"BUTTON", L"Hilfe: Token erstellen", BS_PUSHBUTTON, 340, 127, 180, 27, S_HELP);
+        showToken = add(PAGE_CONNECTION, L"BUTTON", L"Token anzeigen", BS_AUTOCHECKBOX, 190, 127, 135, 26, S_SHOW_TOKEN);
+        add(PAGE_CONNECTION, L"BUTTON", L"Hilfe: Token erstellen", BS_PUSHBUTTON, 340, 127, 180, 27, S_HELP);
 
         // Gesten
-        add(1, L"STATIC",
+        add(PAGE_GESTURES, L"STATIC",
             L"Legt fest, was am Pi-Display bei welcher Geste passiert. Das Touchmenü (Ansicht, "
             L"Helligkeit, Status, Neustart) öffnet sich standardmäßig durch langen Druck.",
             0, 25, 55, 650, 38);
         for (int i = 0; i < GESTURE_COUNT; ++i) {
             int y = 102 + i * 35;
-            add(1, L"STATIC", GESTURE_LABELS[i], 0, 25, y + 3, 160, 22);
-            HWND combo = add(1, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL, 190, y, 360, 250, S_GESTURE0 + i);
+            add(PAGE_GESTURES, L"STATIC", GESTURE_LABELS[i], 0, 25, y + 3, 160, 22);
+            HWND combo = add(PAGE_GESTURES, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL,
+                             190, y, 360, 250, S_GESTURE0 + i);
             gestures[i] = combo;
             for (const wchar_t* label : ACTION_LABELS) SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)label);
             std::string selected = i == 0 ? "touch_menu" : "none";
@@ -541,37 +570,52 @@ struct SettingsWindow {
             for (int j = 0; j < ACTION_COUNT; ++j) if (selected == ACTION_IDS[j]) index = j;
             SendMessageW(combo, CB_SETCURSEL, index, 0);
         }
-        add(1, L"STATIC", L"Ohne zugeordnetes Touchmenü lassen sich Helligkeit und Neustart am Pi nicht mehr aufrufen.",
+        add(PAGE_GESTURES, L"STATIC",
+            L"Ohne zugeordnetes Touchmenü lassen sich Helligkeit und Neustart am Pi nicht mehr aufrufen.",
             0, 25, 285, 650, 22);
 
+        // Medien
+        mediaList = add(PAGE_MEDIA, L"LISTBOX", L"",
+                        LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | WS_BORDER | WS_VSCROLL,
+                        25, 50, 650, MEDIA_ITEM_HEIGHT * 4 + 2, D_LIST);
+        const int by = 50 + MEDIA_ITEM_HEIGHT * 4 + 12;
+        add(PAGE_MEDIA, L"BUTTON", L"Hinzufügen", BS_PUSHBUTTON, 25, by, 90, 30, D_ADD);
+        add(PAGE_MEDIA, L"BUTTON", L"Vorschau", BS_PUSHBUTTON, 123, by, 80, 30, D_PREVIEW);
+        add(PAGE_MEDIA, L"BUTTON", L"Entfernen", BS_PUSHBUTTON, 211, by, 80, 30, D_REMOVE);
+        add(PAGE_MEDIA, L"BUTTON", L"Als Standard", BS_PUSHBUTTON, 322, by, 100, 30, D_ACTIVATE);
+        add(PAGE_MEDIA, L"BUTTON", L"Als Boot-Splash", BS_PUSHBUTTON, 430, by, 115, 30, D_BOOT);
+        add(PAGE_MEDIA, L"BUTTON", L"Als Shutdown-Medium", BS_PUSHBUTTON, 553, by, 122, 30, D_SHUTDOWN);
+
         // RetroArch
-        add(2, L"STATIC", L"Tastenkombination", 0, 25, 65, 160, 22);
-        hotkey = add(2, L"EDIT", current.hotkey.c_str(), WS_BORDER | ES_AUTOHSCROLL, 190, 62, 160, 25, S_HOTKEY);
-        add(2, L"STATIC", L"Beispiele: F1, Ctrl+F1, Shift+F1 (nur im aktiven RetroArch-Fenster).",
+        add(PAGE_RETROARCH, L"STATIC", L"Tastenkombination", 0, 25, 65, 160, 22);
+        hotkey = add(PAGE_RETROARCH, L"EDIT", current.hotkey.c_str(), WS_BORDER | ES_AUTOHSCROLL,
+                     190, 62, 160, 25, S_HOTKEY);
+        add(PAGE_RETROARCH, L"STATIC", L"Beispiele: F1, Ctrl+F1, Shift+F1 (nur im aktiven RetroArch-Fenster).",
             0, 190, 92, 480, 32);
-        add(2, L"STATIC", L"Steuerungsart", 0, 25, 137, 160, 22);
-        retroMode = add(2, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL, 190, 134, 360, 120, S_RETRO_MODE);
+        add(PAGE_RETROARCH, L"STATIC", L"Steuerungsart", 0, 25, 137, 160, 22);
+        retroMode = add(PAGE_RETROARCH, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL, 190, 134, 360, 120, S_RETRO_MODE);
         SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)L"Tastaturkürzel senden");
         SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)L"Lokaler RetroArch-Netzwerkbefehl");
         SendMessageW(retroMode, CB_SETCURSEL, current.retroArchNetworkControl ? 1 : 0, 0);
-        add(2, L"STATIC", L"Netzwerk-Port", 0, 25, 175, 160, 22);
-        retroPort = add(2, L"EDIT", std::to_wstring(current.retroArchNetworkPort).c_str(),
+        add(PAGE_RETROARCH, L"STATIC", L"Netzwerk-Port", 0, 25, 175, 160, 22);
+        retroPort = add(PAGE_RETROARCH, L"EDIT", std::to_wstring(current.retroArchNetworkPort).c_str(),
                         WS_BORDER | ES_AUTOHSCROLL | ES_NUMBER, 190, 172, 100, 25, S_RETRO_PORT);
-        add(2, L"STATIC", L"Für Netzwerkmodus: RetroArch > Einstellungen > Netzwerk > Netzwerkbefehle aktivieren.",
+        add(PAGE_RETROARCH, L"STATIC",
+            L"Für Netzwerkmodus: RetroArch > Einstellungen > Netzwerk > Netzwerkbefehle aktivieren.",
             0, 190, 202, 480, 40);
 
         // Allgemein
-        autostart = add(3, L"BUTTON", L"Mit Windows starten", BS_AUTOCHECKBOX, 25, 62, 220, 26, S_STARTUP);
+        autostart = add(PAGE_GENERAL, L"BUTTON", L"Mit Windows starten", BS_AUTOCHECKBOX, 25, 62, 220, 26, S_STARTUP);
         SendMessageW(autostart, BM_SETCHECK, current.autostart ? BST_CHECKED : BST_UNCHECKED, 0);
-        add(3, L"BUTTON", L"Medien verwalten...", BS_PUSHBUTTON, 25, 105, 210, 28, S_MEDIA);
-        add(3, L"STATIC", L"Standardmedium, Boot-Splash und Shutdown-Medium hochladen.", 0, 250, 111, 420, 22);
-        add(3, L"BUTTON", L"INI-Datei öffnen", BS_PUSHBUTTON, 25, 145, 210, 28, S_OPEN_INI);
-        add(3, L"STATIC", L"Alle Einstellungen im Texteditor; danach im Tray \"Einstellungen neu laden\".",
-            0, 250, 151, 420, 36);
+        add(PAGE_GENERAL, L"BUTTON", L"INI-Datei öffnen", BS_PUSHBUTTON, 25, 105, 210, 28, S_OPEN_INI);
+        add(PAGE_GENERAL, L"STATIC",
+            L"Alle Einstellungen im Texteditor; danach im Tray \"Einstellungen neu laden\".",
+            0, 250, 111, 420, 36);
 
-        control(hwnd, L"BUTTON", L"Speichern", BS_DEFPUSHBUTTON, 485, 362, 100, 30, S_SAVE);
-        control(hwnd, L"BUTTON", L"Abbrechen", BS_PUSHBUTTON, 595, 362, 100, 30, S_CANCEL);
-        showPage(0);
+        control(hwnd, L"BUTTON", L"Speichern", BS_DEFPUSHBUTTON, 485, 432, 100, 30, S_SAVE);
+        control(hwnd, L"BUTTON", L"Abbrechen", BS_PUSHBUTTON, 595, 432, 100, 30, S_CANCEL);
+        refreshMedia();
+        showPage(initialPage);
     }
     void save() {
         Settings next;
@@ -581,9 +625,10 @@ struct SettingsWindow {
         next.hotkey = readText(hotkey);
         next.retroArchNetworkControl = SendMessageW(retroMode, CB_GETCURSEL, 0, 0) == 1;
         try { next.retroArchNetworkPort = std::stoi(readText(retroPort)); }
-        catch (...) { showPage(2); alert(hwnd, L"Ungültiger RetroArch-Netzwerk-Port."); return; }
+        catch (...) { showPage(PAGE_RETROARCH); alert(hwnd, L"Ungültiger RetroArch-Netzwerk-Port."); return; }
         if (next.retroArchNetworkPort < 1 || next.retroArchNetworkPort > 65535) {
-            showPage(2); alert(hwnd, L"RetroArch-Netzwerk-Port muss zwischen 1 und 65535 liegen."); return;
+            showPage(PAGE_RETROARCH);
+            alert(hwnd, L"RetroArch-Netzwerk-Port muss zwischen 1 und 65535 liegen."); return;
         }
         next.autostart = SendMessageW(autostart, BM_GETCHECK, 0, 0) == BST_CHECKED;
         bool menuReachable = false;
@@ -593,14 +638,14 @@ struct SettingsWindow {
             menuReachable = menuReachable || next.gestures[GESTURE_IDS[i]] == "touch_menu";
         }
         if (!next.configured()) {
-            showPage(0);
+            showPage(PAGE_CONNECTION);
             alert(hwnd, L"Bitte HTTP-Pi-Adresse und Token mit mindestens 24 Zeichen eingeben."); return;
         }
         if (!validHotkey(next.hotkey)) {
-            showPage(2); alert(hwnd, L"Ungültige Tastenkombination. Beispiel: Ctrl+Shift+F1."); return;
+            showPage(PAGE_RETROARCH); alert(hwnd, L"Ungültige Tastenkombination. Beispiel: Ctrl+Shift+F1."); return;
         }
         if (!menuReachable) {
-            showPage(1);
+            showPage(PAGE_GESTURES);
             if (MessageBoxW(hwnd,
                             L"Dem Touchmenü ist keine Geste zugeordnet. Helligkeit, Status sowie Neustart "
                             L"und Herunterfahren lassen sich am Pi dann nicht mehr aufrufen.\n\nTrotzdem speichern?",
@@ -617,9 +662,223 @@ struct SettingsWindow {
             DestroyWindow(hwnd);
         } catch (const std::exception& error) { alert(hwnd, errorText(error), L"Einstellungen"); }
     }
+
+    // ---- Medien -----------------------------------------------------------------
+    std::wstring activeName(const wchar_t* marker) {
+        try {
+            std::wstring text = fromUtf8(readFile(dataDirectory() + L"\\" + marker));
+            while (!text.empty() && (text.back() == L'\r' || text.back() == L'\n')) text.pop_back();
+            return text;
+        } catch (...) { return L""; }
+    }
+    std::wstring selectedName() {
+        int index = int(SendMessageW(mediaList, LB_GETCURSEL, 0, 0));
+        if (index == LB_ERR || index < 0 || size_t(index) >= entries.size()) return L"";
+        return entries[size_t(index)].name;
+    }
+    void refreshMedia(const std::wstring& select = L"") {
+        std::wstring keep = select.empty() ? selectedName() : select;
+        entries.clear();
+        SendMessageW(mediaList, LB_RESETCONTENT, 0, 0);
+        std::error_code ec;
+        fs::create_directories(fs::path(mediaDirectory()), ec);
+        for (fs::directory_iterator it(fs::path(mediaDirectory()), ec), end; !ec && it != end; it.increment(ec)) {
+            std::error_code fileError;
+            if (!it->is_regular_file(fileError) || fileError) continue;
+            MediaEntry entry;
+            entry.name = it->path().filename().wstring();
+            entry.size = it->file_size(fileError);
+            auto stamp = it->last_write_time(fileError).time_since_epoch().count();
+            entry.key = entry.name + L"|" + std::to_wstring(entry.size) + L"|" + std::to_wstring(stamp);
+            entries.push_back(std::move(entry));
+        }
+        std::sort(entries.begin(), entries.end(),
+                  [](const MediaEntry& a, const MediaEntry& b) { return a.name < b.name; });
+        std::vector<std::pair<std::wstring, std::wstring>> jobs;
+        for (const auto& entry : entries) {
+            SendMessageW(mediaList, LB_ADDSTRING, 0, (LPARAM)entry.name.c_str());
+            if (thumbnails.count(entry.key) || thumbnailFailed.count(entry.key) ||
+                thumbnailPending.count(entry.key)) continue;
+            thumbnailPending.insert(entry.key);
+            jobs.emplace_back(entry.key, (fs::path(mediaDirectory()) / entry.name).wstring());
+        }
+        standardName = activeName(L"active-media.txt");
+        bootName = activeName(L"boot-media.txt");
+        shutdownName = activeName(L"shutdown-media.txt");
+        for (size_t i = 0; i < entries.size(); ++i)
+            if (entries[i].name == keep) SendMessageW(mediaList, LB_SETCURSEL, i, 0);
+        startThumbnails(std::move(jobs));
+    }
+    void startThumbnails(std::vector<std::pair<std::wstring, std::wstring>> jobs) {
+        if (jobs.empty()) return;
+        HWND target = hwnd;
+        workers.emplace_back([this, target, jobs = std::move(jobs)] {
+            const bool com = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
+            for (const auto& job : jobs) {
+                if (stopping) break;
+                HBITMAP bitmap = com ? createThumbnail(job.second, THUMB_W, THUMB_H) : nullptr;
+                auto* result = new ThumbResult{job.first, bitmap};
+                if (!PostMessageW(target, WM_THUMB, 0, (LPARAM)result)) {
+                    if (bitmap) DeleteObject(bitmap);
+                    delete result;
+                }
+            }
+            if (com) CoUninitialize();
+        });
+    }
+    void thumbnailReady(ThumbResult* result) {
+        thumbnailPending.erase(result->key);
+        if (result->bitmap) {
+            auto old = thumbnails.find(result->key);
+            if (old != thumbnails.end()) DeleteObject(old->second);
+            thumbnails[result->key] = result->bitmap;
+        } else {
+            thumbnailFailed.insert(result->key);
+        }
+        delete result;
+        InvalidateRect(mediaList, nullptr, FALSE);
+    }
+    static std::wstring sizeText(uintmax_t bytes) {
+        wchar_t text[48];
+        if (bytes >= 1024 * 1024) swprintf(text, 48, L"%.1f MB", double(bytes) / (1024.0 * 1024.0));
+        else swprintf(text, 48, L"%.0f KB", std::max(1.0, double(bytes) / 1024.0));
+        for (wchar_t* c = text; *c; ++c) if (*c == L'.') *c = L',';
+        return text;
+    }
+    void drawItem(const DRAWITEMSTRUCT& d) {
+        if (d.itemID == UINT(-1) || d.itemID >= entries.size()) return;
+        const MediaEntry& entry = entries[d.itemID];
+        const bool selected = (d.itemState & ODS_SELECTED) != 0;
+        HDC dc = d.hDC;
+        RECT row = d.rcItem;
+        FillRect(dc, &row, GetSysColorBrush(selected ? COLOR_HIGHLIGHT : COLOR_WINDOW));
+        SetBkMode(dc, TRANSPARENT);
+
+        const int thumbX = row.left + 6, thumbY = row.top + (row.bottom - row.top - THUMB_H) / 2;
+        auto bitmap = thumbnails.find(entry.key);
+        if (bitmap != thumbnails.end()) {
+            HDC memory = CreateCompatibleDC(dc);
+            HGDIOBJ previous = SelectObject(memory, bitmap->second);
+            BitBlt(dc, thumbX, thumbY, THUMB_W, THUMB_H, memory, 0, 0, SRCCOPY);
+            SelectObject(memory, previous);
+            DeleteDC(memory);
+        } else {
+            RECT box{thumbX, thumbY, thumbX + THUMB_W, thumbY + THUMB_H};
+            HBRUSH gray = CreateSolidBrush(RGB(0x30, 0x30, 0x30));
+            FillRect(dc, &box, gray);
+            DeleteObject(gray);
+            SetTextColor(dc, RGB(0xb0, 0xb0, 0xb0));
+            DrawTextW(dc, thumbnailFailed.count(entry.key) ? L"kein Vorschaubild" : L"…", -1, &box,
+                      DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
+
+        const int textX = thumbX + THUMB_W + 14;
+        std::wstring ext = fs::path(entry.name).extension().wstring();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+        std::wstring detail = (ext == L".mp4" ? L"Video" : L"Bild") + std::wstring(L"  ·  ") + sizeText(entry.size);
+        std::wstring roles;
+        auto addRole = [&](const std::wstring& active, const wchar_t* label) {
+            if (active == entry.name) roles += (roles.empty() ? L"" : L"  ·  ") + std::wstring(label);
+        };
+        addRole(standardName, L"Standardmedium");
+        addRole(bootName, L"Boot-Splash");
+        addRole(shutdownName, L"Shutdown-Medium");
+
+        HGDIOBJ previousFont = SelectObject(dc, boldFont);
+        SetTextColor(dc, GetSysColor(selected ? COLOR_HIGHLIGHTTEXT : COLOR_WINDOWTEXT));
+        RECT nameRect{textX, row.top + 8, row.right - 8, row.top + 28};
+        DrawTextW(dc, entry.name.c_str(), -1, &nameRect, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        SelectObject(dc, previousFont);
+        SetTextColor(dc, GetSysColor(selected ? COLOR_HIGHLIGHTTEXT : COLOR_GRAYTEXT));
+        RECT detailRect{textX, row.top + 30, row.right - 8, row.top + 48};
+        DrawTextW(dc, detail.c_str(), -1, &detailRect, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        if (!roles.empty()) {
+            SetTextColor(dc, selected ? GetSysColor(COLOR_HIGHLIGHTTEXT) : RGB(0x00, 0x5a, 0xb4));
+            RECT roleRect{textX, row.top + 50, row.right - 8, row.top + 68};
+            DrawTextW(dc, roles.c_str(), -1, &roleRect, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        }
+        HPEN line = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_BTNFACE));
+        HGDIOBJ previousPen = SelectObject(dc, line);
+        MoveToEx(dc, row.left, row.bottom - 1, nullptr);
+        LineTo(dc, row.right, row.bottom - 1);
+        SelectObject(dc, previousPen);
+        DeleteObject(line);
+    }
+    void addMedia() {
+        wchar_t chosen[32768]{};
+        wchar_t filter[] = L"Unterstützte Medien\0*.jpg;*.jpeg;*.png;*.gif;*.webp;*.mp4\0Alle Dateien\0*.*\0\0";
+        OPENFILENAMEW dialog{};
+        dialog.lStructSize = sizeof(dialog);
+        dialog.hwndOwner = hwnd; dialog.lpstrFilter = filter;
+        dialog.lpstrFile = chosen; dialog.nMaxFile = 32768;
+        dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+        if (!GetOpenFileNameW(&dialog)) return;
+        try {
+            fs::path source(chosen);
+            auto length = fs::file_size(source);
+            if (length > 20 * 1024 * 1024) throw std::runtime_error("File exceeds 20 MB upload limit");
+            std::wstring ext = source.extension().wstring();
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+            if (ext != L".jpg" && ext != L".jpeg" && ext != L".png" &&
+                ext != L".gif" && ext != L".webp" && ext != L".mp4")
+                throw std::runtime_error("Unsupported file type");
+            fs::path target = fs::path(mediaDirectory()) / source.filename();
+            if (fs::exists(target)) {
+                std::wstring suffix = L"-" + std::to_wstring(GetTickCount64());
+                target = fs::path(mediaDirectory()) / (source.stem().wstring() + suffix + ext);
+            }
+            fs::copy_file(source, target);
+            refreshMedia(target.filename().wstring());
+        } catch (const std::exception& error) { alert(hwnd, errorText(error)); }
+    }
+    void previewMedia() {
+        std::wstring name = selectedName();
+        if (name.empty()) return;
+        std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
+        ShellExecuteW(hwnd, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    }
+    void activateMedia(const wchar_t* endpoint = L"/v1/default-media",
+                       const wchar_t* marker = L"active-media.txt",
+                       const wchar_t* success = L"Das Standardmedium ist auf dem Pi aktiv.",
+                       bool imageOnly = false) {
+        std::wstring name = selectedName();
+        if (name.empty()) return;
+        try {
+            Settings settings;
+            { std::lock_guard<std::mutex> guard(app->mutex); settings = app->settings; }
+            std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
+            std::string body = readFile(path);
+            if (body.size() > 20 * 1024 * 1024) throw std::runtime_error("File exceeds 20 MB upload limit");
+            std::wstring ext = fs::path(name).extension().wstring();
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+            if (imageOnly && ext != L".png" && ext != L".jpg" && ext != L".jpeg")
+                throw std::runtime_error("Boot splash must be a PNG or JPEG image");
+            piRequest(settings, L"POST", endpoint, body,
+                      L"application/octet-stream", L"X-File-Name: upload" + ext + L"\r\n");
+            writeFile(dataDirectory() + L"\\" + marker, toUtf8(name));
+            refreshMedia(name);
+            alert(hwnd, success);
+        } catch (const std::exception& error) { alert(hwnd, errorText(error), L"Upload fehlgeschlagen"); }
+    }
+    void removeMedia() {
+        std::wstring name = selectedName();
+        if (name.empty()) return;
+        if (name == activeName(L"active-media.txt") || name == activeName(L"boot-media.txt") ||
+            name == activeName(L"shutdown-media.txt")) {
+            alert(hwnd, L"Bitte das Medium zuerst in allen verwendeten Rollen ersetzen.");
+            return;
+        }
+        std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
+        if (!DeleteFileW(path.c_str())) { alert(hwnd, L"Datei konnte nicht entfernt werden."); return; }
+        refreshMedia(L"\x01");  // nothing selected afterwards
+    }
 };
-void App::showSettings() {
-    if (settingsWindow) { SetForegroundWindow(settingsWindow); return; }
+void App::showSettings(int page) {
+    if (settingsWindow) {
+        SendMessageW(settingsWindow, WM_SELECT_PAGE, WPARAM(page), 0);
+        SetForegroundWindow(settingsWindow);
+        return;
+    }
     static bool registered = false;
     if (!registered) {
         WNDCLASSW klass{}; klass.lpfnWndProc = settingsProc;
@@ -628,9 +887,9 @@ void App::showSettings() {
         klass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         registered = RegisterClassW(&klass) != 0;
     }
-    auto* state = new SettingsWindow(this);
+    auto* state = new SettingsWindow(this, page);
     constexpr DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN;
-    RECT frame{0, 0, 705, 405};
+    RECT frame{0, 0, 705, 475};
     AdjustWindowRectEx(&frame, style, FALSE, WS_EX_DLGMODALFRAME);
     HWND window = CreateWindowExW(WS_EX_DLGMODALFRAME, L"MarqueePiSettings",
                                  L"Marquee-Pi - Einstellungen", style,
@@ -652,6 +911,22 @@ static LRESULT CALLBACK settingsProc(HWND hwnd, UINT message, WPARAM wp, LPARAM 
     if (!state) return DefWindowProcW(hwnd, message, wp, lp);
     switch (message) {
     case WM_CREATE: state->create(); return 0;
+    case WM_SELECT_PAGE:
+        if (int(wp) >= 0 && int(wp) < SETTINGS_PAGES) state->showPage(int(wp));
+        return 0;
+    case WM_THUMB: state->thumbnailReady((ThumbResult*)lp); return 0;
+    case WM_MEASUREITEM: {
+        auto* item = (MEASUREITEMSTRUCT*)lp;
+        if (item->CtlID != D_LIST) break;
+        item->itemHeight = MEDIA_ITEM_HEIGHT;
+        return TRUE;
+    }
+    case WM_DRAWITEM: {
+        auto* item = (DRAWITEMSTRUCT*)lp;
+        if (item->CtlID != D_LIST) break;
+        state->drawItem(*item);
+        return TRUE;
+    }
     case WM_NOTIFY: {
         const NMHDR* header = (const NMHDR*)lp;
         if (header->idFrom == S_TABS && header->code == TCN_SELCHANGE)
@@ -677,7 +952,21 @@ static LRESULT CALLBACK settingsProc(HWND hwnd, UINT message, WPARAM wp, LPARAM 
                   L"5. Genau denselben Token hier eintragen und speichern. Nicht veröffentlichen.",
                   L"Zugriffstoken erstellen");
             return 0;
-        case S_MEDIA: state->app->showMedia(); return 0;
+        case D_LIST:
+            if (HIWORD(wp) == LBN_DBLCLK) state->previewMedia();
+            return 0;
+        case D_ADD: state->addMedia(); return 0;
+        case D_PREVIEW: state->previewMedia(); return 0;
+        case D_ACTIVATE: state->activateMedia(); return 0;
+        case D_BOOT:
+            state->activateMedia(L"/v1/boot-splash", L"boot-media.txt",
+                                 L"Der Boot-Splash ist auf dem Pi gespeichert und gilt ab dem nächsten Start.", true);
+            return 0;
+        case D_SHUTDOWN:
+            state->activateMedia(L"/v1/shutdown-media", L"shutdown-media.txt",
+                                 L"Das Shutdown-Medium ist auf dem Pi gespeichert.");
+            return 0;
+        case D_REMOVE: state->removeMedia(); return 0;
         case S_OPEN_INI:
             ShellExecuteW(hwnd, L"open", settingsPath().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
             return 0;
@@ -688,183 +977,6 @@ static LRESULT CALLBACK settingsProc(HWND hwnd, UINT message, WPARAM wp, LPARAM 
     case WM_CLOSE: DestroyWindow(hwnd); return 0;
     case WM_NCDESTROY:
         state->app->settingsWindow = nullptr;
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-        delete state;
-        return 0;
-    }
-    return DefWindowProcW(hwnd, message, wp, lp);
-}
-
-struct MediaWindow {
-    App* app = nullptr;
-    HWND hwnd = nullptr, list = nullptr, activeLabel = nullptr;
-    explicit MediaWindow(App* owner) : app(owner) {}
-    std::wstring activeName(const wchar_t* marker = L"active-media.txt") {
-        try {
-            std::wstring text = fromUtf8(readFile(dataDirectory() + L"\\" + marker));
-            while (!text.empty() && (text.back() == L'\r' || text.back() == L'\n')) text.pop_back();
-            return text;
-        } catch (...) { return L""; }
-    }
-    void refresh() {
-        SendMessageW(list, LB_RESETCONTENT, 0, 0);
-        fs::create_directories(fs::path(mediaDirectory()));
-        std::vector<std::wstring> names;
-        for (auto& file : fs::directory_iterator(fs::path(mediaDirectory())))
-            if (file.is_regular_file()) names.push_back(file.path().filename().wstring());
-        std::sort(names.begin(), names.end());
-        for (const auto& name : names) SendMessageW(list, LB_ADDSTRING, 0, (LPARAM)name.c_str());
-        std::wstring standard = activeName();
-        std::wstring boot = activeName(L"boot-media.txt");
-        std::wstring shutdown = activeName(L"shutdown-media.txt");
-        std::wstring label = L"Standard: " + (standard.empty() ? L"kein eigenes Medium" : standard) +
-            L"\r\nBoot-Splash: " + (boot.empty() ? L"nicht eingerichtet" : boot) +
-            L"\r\nShutdown: " + (shutdown.empty() ? L"nicht eingerichtet" : shutdown);
-        SetWindowTextW(activeLabel, label.c_str());
-    }
-    std::wstring selected() {
-        int index = int(SendMessageW(list, LB_GETCURSEL, 0, 0));
-        if (index == LB_ERR) return L"";
-        int length = int(SendMessageW(list, LB_GETTEXTLEN, index, 0));
-        if (length <= 0 || length > 300) return L"";
-        std::wstring name(size_t(length) + 1, L'\0');
-        SendMessageW(list, LB_GETTEXT, index, (LPARAM)name.data());
-        name.resize(length);
-        return name;
-    }
-    void create() {
-        activeLabel = control(hwnd, L"STATIC", L"Medien:", SS_LEFT, 15, 12, 570, 58);
-        list = control(hwnd, L"LISTBOX", L"", LBS_NOTIFY | WS_BORDER | WS_VSCROLL,
-                       15, 75, 570, 235, D_LIST);
-        control(hwnd, L"BUTTON", L"Hinzufügen", BS_PUSHBUTTON, 15, 322, 110, 30, D_ADD);
-        control(hwnd, L"BUTTON", L"Vorschau", BS_PUSHBUTTON, 135, 322, 100, 30, D_PREVIEW);
-        control(hwnd, L"BUTTON", L"Entfernen", BS_PUSHBUTTON, 245, 322, 100, 30, D_REMOVE);
-        control(hwnd, L"BUTTON", L"Als Standard", BS_PUSHBUTTON, 15, 362, 130, 30, D_ACTIVATE);
-        control(hwnd, L"BUTTON", L"Als Boot-Splash", BS_PUSHBUTTON, 155, 362, 150, 30, D_BOOT);
-        control(hwnd, L"BUTTON", L"Als Shutdown-Medium", BS_PUSHBUTTON, 315, 362, 190, 30, D_SHUTDOWN);
-        refresh();
-    }
-    void add() {
-        wchar_t chosen[32768]{};
-        wchar_t filter[] = L"Unterstützte Medien\0*.jpg;*.jpeg;*.png;*.gif;*.webp;*.mp4\0Alle Dateien\0*.*\0\0";
-        OPENFILENAMEW dialog{};
-        dialog.lStructSize = sizeof(dialog);
-        dialog.hwndOwner = hwnd; dialog.lpstrFilter = filter;
-        dialog.lpstrFile = chosen; dialog.nMaxFile = 32768;
-        dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-        if (!GetOpenFileNameW(&dialog)) return;
-        try {
-            fs::path source(chosen);
-            auto length = fs::file_size(source);
-            if (length > 20 * 1024 * 1024) throw std::runtime_error("File exceeds 20 MB upload limit");
-            std::wstring ext = source.extension().wstring();
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-            if (ext != L".jpg" && ext != L".jpeg" && ext != L".png" &&
-                ext != L".gif" && ext != L".webp" && ext != L".mp4")
-                throw std::runtime_error("Unsupported file type");
-            fs::path target = fs::path(mediaDirectory()) / source.filename();
-            if (fs::exists(target)) {
-                std::wstring suffix = L"-" + std::to_wstring(GetTickCount64());
-                target = fs::path(mediaDirectory()) / (source.stem().wstring() + suffix + ext);
-            }
-            fs::copy_file(source, target);
-            refresh();
-            SendMessageW(list, LB_SELECTSTRING, (WPARAM)-1, (LPARAM)target.filename().c_str());
-        } catch (const std::exception& error) { alert(hwnd, errorText(error)); }
-    }
-    void preview() {
-        std::wstring name = selected();
-        if (name.empty()) return;
-        std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
-        ShellExecuteW(hwnd, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    }
-    void activate(const wchar_t* endpoint = L"/v1/default-media",
-                  const wchar_t* marker = L"active-media.txt",
-                  const wchar_t* success = L"Das Standardmedium ist auf dem Pi aktiv.",
-                  bool imageOnly = false) {
-        std::wstring name = selected();
-        if (name.empty()) return;
-        try {
-            Settings settings;
-            { std::lock_guard<std::mutex> guard(app->mutex); settings = app->settings; }
-            std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
-            std::string body = readFile(path);
-            if (body.size() > 20 * 1024 * 1024) throw std::runtime_error("File exceeds 20 MB upload limit");
-            std::wstring ext = fs::path(name).extension().wstring();
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-            if (imageOnly && ext != L".png" && ext != L".jpg" && ext != L".jpeg")
-                throw std::runtime_error("Boot splash must be a PNG or JPEG image");
-            piRequest(settings, L"POST", endpoint, body,
-                      L"application/octet-stream", L"X-File-Name: upload" + ext + L"\r\n");
-            writeFile(dataDirectory() + L"\\" + marker, toUtf8(name));
-            refresh();
-            alert(hwnd, success);
-        } catch (const std::exception& error) { alert(hwnd, errorText(error), L"Upload fehlgeschlagen"); }
-    }
-    void remove() {
-        std::wstring name = selected();
-        if (name.empty()) return;
-        if (name == activeName() || name == activeName(L"boot-media.txt") ||
-            name == activeName(L"shutdown-media.txt")) {
-            alert(hwnd, L"Bitte das Medium zuerst in allen verwendeten Rollen ersetzen.");
-            return;
-        }
-        std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
-        if (!DeleteFileW(path.c_str())) { alert(hwnd, L"Datei konnte nicht entfernt werden."); return; }
-        refresh();
-    }
-};
-void App::showMedia() {
-    if (mediaWindow) { SetForegroundWindow(mediaWindow); return; }
-    static bool registered = false;
-    if (!registered) {
-        WNDCLASSW klass{}; klass.lpfnWndProc = mediaProc;
-        klass.hInstance = GetModuleHandleW(nullptr); klass.lpszClassName = L"MarqueePiMedia";
-        klass.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
-        klass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        registered = RegisterClassW(&klass) != 0;
-    }
-    auto* state = new MediaWindow(this);
-    HWND window = CreateWindowExW(WS_EX_DLGMODALFRAME, L"MarqueePiMedia",
-                                 L"Marquee-Pi - Medien verwalten", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-                                 CW_USEDEFAULT, CW_USEDEFAULT, 620, 450, hwnd, nullptr,
-                                 GetModuleHandleW(nullptr), state);
-    if (!window) { delete state; alert(hwnd, L"Medienfenster konnte nicht geöffnet werden."); return; }
-    mediaWindow = window;
-    ShowWindow(window, SW_SHOW);
-    SetForegroundWindow(window);
-}
-static LRESULT CALLBACK mediaProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
-    auto* state = (MediaWindow*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
-    if (message == WM_NCCREATE) {
-        state = (MediaWindow*)((CREATESTRUCTW*)lp)->lpCreateParams;
-        state->hwnd = hwnd;
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)state);
-    }
-    if (!state) return DefWindowProcW(hwnd, message, wp, lp);
-    switch (message) {
-    case WM_CREATE:
-        try { state->create(); } catch (const std::exception& error) { alert(hwnd, errorText(error)); }
-        return 0;
-    case WM_COMMAND:
-        switch (LOWORD(wp)) {
-        case D_ADD: state->add(); return 0;
-        case D_PREVIEW: state->preview(); return 0;
-        case D_ACTIVATE: state->activate(); return 0;
-        case D_BOOT:
-            state->activate(L"/v1/boot-splash", L"boot-media.txt",
-                            L"Der Boot-Splash ist auf dem Pi gespeichert und gilt ab dem nächsten Start.", true);
-            return 0;
-        case D_SHUTDOWN:
-            state->activate(L"/v1/shutdown-media", L"shutdown-media.txt",
-                            L"Das Shutdown-Medium ist auf dem Pi gespeichert.");
-            return 0;
-        case D_REMOVE: state->remove(); return 0;
-        }
-        break;
-    case WM_CLOSE: DestroyWindow(hwnd); return 0;
-    case WM_NCDESTROY:
-        state->app->mediaWindow = nullptr;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         delete state;
         return 0;
