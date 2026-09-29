@@ -48,20 +48,38 @@ jobs:
         run: |
           # Chromium comes from a snap on Ubuntu, so ignore dependencies here; the point
           # is to run the maintainer scripts on a Debian-family system with systemd.
-          sudo dpkg -i --force-depends dist/deb/*.deb
-          id marqueepi
-          test "$(stat -c '%U:%G %a' /etc/marquee-pi/config.json)" = "root:marqueepi 640"
-          ! grep -q CHANGE_ME /etc/marquee-pi/config.json
-          python3 -c "import json; c = json.load(open('/etc/marquee-pi/config.json')); assert len(c['token']) == 64"
-          test "$(stat -c '%U:%G %a' /var/lib/marquee-pi)" = "marqueepi:marqueepi 750"
-          test -x /opt/marquee-pi/start-kiosk.sh
-          systemctl cat marquee-pi-api.service
-          systemctl is-enabled marquee-pi-api.service
-          sudo dpkg -P marquee-pi
-          ! id marqueepi 2>/dev/null
-          test ! -e /etc/marquee-pi
-          test ! -e /var/lib/marquee-pi
-          test ! -e /opt/marquee-pi
+          # The service directories are not readable for the runner user, so inspect them with sudo.
+          # Every failed check is reported as an annotation, which is readable without a login.
+          fail=0
+          check() {
+            description=$1; shift
+            if "$@" >/dev/null 2>&1; then echo "ok: $description"; else echo "::error::check failed: $description"; fail=1; fi
+          }
+          if ! sudo dpkg -i --force-depends dist/deb/*.deb > install.log 2>&1; then
+            cat install.log
+            echo "::error::dpkg -i failed: $(tail -n 8 install.log | tr '\n' '|')"
+            exit 1
+          fi
+          cat install.log
+          check "service user exists" id marqueepi
+          check "config is root:marqueepi 640" test "$(sudo stat -c '%U:%G %a' /etc/marquee-pi/config.json)" = "root:marqueepi 640"
+          check "token placeholder replaced" sudo sh -c '! grep -q CHANGE_ME /etc/marquee-pi/config.json'
+          check "token has 64 characters" sudo python3 -c "import json; c = json.load(open('/etc/marquee-pi/config.json')); assert len(c['token']) == 64"
+          check "data directory is marqueepi:marqueepi 750" test "$(sudo stat -c '%U:%G %a' /var/lib/marquee-pi)" = "marqueepi:marqueepi 750"
+          check "kiosk script is executable" test -x /opt/marquee-pi/start-kiosk.sh
+          check "api unit is known to systemd" systemctl cat marquee-pi-api.service
+          check "api unit is enabled" systemctl is-enabled marquee-pi-api.service
+          if ! sudo dpkg -P marquee-pi > purge.log 2>&1; then
+            cat purge.log
+            echo "::error::dpkg -P failed: $(tail -n 8 purge.log | tr '\n' '|')"
+            exit 1
+          fi
+          cat purge.log
+          check "service user removed" sh -c '! id marqueepi'
+          check "config removed" test ! -e /etc/marquee-pi
+          check "data removed" test ! -e /var/lib/marquee-pi
+          check "program removed" test ! -e /opt/marquee-pi
+          exit $fail
 
   windows-native:
     runs-on: windows-latest
