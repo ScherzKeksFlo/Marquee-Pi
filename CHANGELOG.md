@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.2.0-beta.1
+## 1.0.0-beta.1
 
-First beta. It is tested on one setup (Raspberry Pi 3 B+ with the 7" DSI touch display on Raspberry Pi OS Trixie, Windows 11 arcade PC with LaunchBox/Big Box), not yet on others.
+Follows `1.0.0-preview.2`. It is tested on one setup (Raspberry Pi 3 B+ with the 7" DSI touch display on Raspberry Pi OS Trixie, Windows 11 arcade PC with LaunchBox/Big Box), not yet on others.
 
 ### Highlights
 
@@ -20,7 +20,7 @@ First beta. It is tested on one setup (Raspberry Pi 3 B+ with the 7" DSI touch d
 ### Breaking changes
 
 - Everything is now named Marquee-Pi: script `marquee_pi.py`, services `marquee-pi-api` and `marquee-pi-kiosk`, service user `marqueepi`, paths under `/opt/marquee-pi`, `/etc/marquee-pi` and `/var/lib/marquee-pi`, HTTP header `X-Marquee-Token`, named pipe `MarqueePiGameEvents`.
-- The Windows app, the LaunchBox plugin and the Pi must all be from this release. Installations from earlier development snapshots have to be reinstalled following `pi/INSTALL.md`.
+- The Windows app, the LaunchBox plugin and the Pi must all be from this release. Installations from the previous previews have to be reinstalled following `pi/INSTALL.md`.
 - The Windows app no longer imports settings from the folder of the earlier name.
 
 ### Known limitations
