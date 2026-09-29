@@ -31,18 +31,21 @@ function render() {
   if (!currentState) return;
   stage.replaceChildren();
   const state = currentState;
-  const stamp = "?v=" + state.version;
+  // Cache keys come from content (file name / hash), not the state version, which
+  // restarts at 1 with the server while the browser keeps media for a year.
+  const defaultStamp = "?v=" + (state.default_name ?? "none");
+  const gameStamp = (kind) => "?v=" + (state.game_hashes?.[kind] ?? "none");
   if (state.shutting_down) {
-    stage.appendChild(makeMedia("/ui/shutdown" + stamp, state.shutdown_video, false));
+    stage.appendChild(makeMedia("/ui/shutdown" + "?v=" + (state.shutdown_name ?? "none"), state.shutdown_video, false));
     return;
   }
   if (!state.game_title) {
-    stage.appendChild(makeMedia("/ui/default" + stamp, state.default_video));
+    stage.appendChild(makeMedia("/ui/default" + defaultStamp, state.default_video));
     return;
   }
 
   if (view === "default") {
-    stage.appendChild(makeMedia("/ui/default" + stamp, state.default_video));
+    stage.appendChild(makeMedia("/ui/default" + defaultStamp, state.default_video));
     return;
   }
   const artwork = {
@@ -52,11 +55,11 @@ function render() {
     marquee: state.has_marquee
   };
   if (artwork[view]) {
-    stage.appendChild(makeMedia("/ui/game/" + view + stamp, false));
+    stage.appendChild(makeMedia("/ui/game/" + view + gameStamp(view), false));
   } else if (state.has_marquee) {
-    stage.appendChild(makeMedia("/ui/game/marquee" + stamp, false));
+    stage.appendChild(makeMedia("/ui/game/marquee" + gameStamp("marquee"), false));
   } else {
-    stage.appendChild(makeMedia("/ui/default" + stamp, state.default_video));
+    stage.appendChild(makeMedia("/ui/default" + defaultStamp, state.default_video));
     const label = document.createElement("div");
     label.id = "name";
     label.textContent = state.game_title;

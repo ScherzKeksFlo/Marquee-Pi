@@ -177,34 +177,34 @@ std::string scaledArtwork(const std::wstring& path, const std::string& ext, cons
     ComPtr<IWICBitmapScaler> scaler;
     if (FAILED(factory->CreateBitmapScaler(scaler.out())) ||
         FAILED(scaler->Initialize(source.ptr, scaledWidth, scaledHeight, WICBitmapInterpolationModeFant)))
-        throw std::runtime_error("Artwork scaling failed");
+        return original;
     ComPtr<IStream> stream;
-    if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, stream.out()))) throw std::runtime_error("Artwork stream failed");
+    if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, stream.out()))) return original;
     ComPtr<IWICBitmapEncoder> encoder;
     // CreateEncoder takes a container format GUID, not the encoder's CLSID.
     const GUID container = ext == ".png" ? GUID_ContainerFormatPng : GUID_ContainerFormatJpeg;
     if (FAILED(factory->CreateEncoder(container, nullptr, encoder.out())) ||
         FAILED(encoder->Initialize(stream.ptr, WICBitmapEncoderNoCache)))
-        throw std::runtime_error("Artwork encoder failed");
+        return original;
     ComPtr<IWICBitmapFrameEncode> frame;
     if (FAILED(encoder->CreateNewFrame(frame.out(), nullptr)) || FAILED(frame->Initialize(nullptr)) ||
-        FAILED(frame->SetSize(scaledWidth, scaledHeight))) throw std::runtime_error("Artwork frame failed");
+        FAILED(frame->SetSize(scaledWidth, scaledHeight))) return original;
     WICPixelFormatGUID format = ext == ".png" ? GUID_WICPixelFormat32bppBGRA : GUID_WICPixelFormat24bppBGR;
-    if (FAILED(frame->SetPixelFormat(&format))) throw std::runtime_error("Artwork pixel format failed");
+    if (FAILED(frame->SetPixelFormat(&format))) return original;
     ComPtr<IWICFormatConverter> converter;
     if (FAILED(factory->CreateFormatConverter(converter.out())) ||
         FAILED(converter->Initialize(scaler.ptr, format, WICBitmapDitherTypeNone, nullptr, 0,
                                      WICBitmapPaletteTypeCustom)) ||
         FAILED(frame->WriteSource(converter.ptr, nullptr)) || FAILED(frame->Commit()) || FAILED(encoder->Commit()))
-        throw std::runtime_error("Artwork encoding failed");
+        return original;
     HGLOBAL memory = nullptr;
     STATSTG stats{};
     if (FAILED(stream->Stat(&stats, STATFLAG_NONAME)) || stats.cbSize.HighPart || !stats.cbSize.LowPart)
-        throw std::runtime_error("Artwork size unavailable");
-    if (FAILED(GetHGlobalFromStream(stream.ptr, &memory)) || !memory) throw std::runtime_error("Artwork memory unavailable");
+        return original;
+    if (FAILED(GetHGlobalFromStream(stream.ptr, &memory)) || !memory) return original;
     const SIZE_T size = stats.cbSize.LowPart;
     const void* bytes = GlobalLock(memory);
-    if (!bytes) throw std::runtime_error("Artwork memory unavailable");
+    if (!bytes) return original;
     std::string result(static_cast<const char*>(bytes), static_cast<const char*>(bytes) + size);
     GlobalUnlock(memory);
     return result;

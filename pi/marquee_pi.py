@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import hashlib
 import hmac
 import json
 import math
@@ -72,11 +73,14 @@ def verify_mp4(path: Path) -> float | None:
     probe = shutil.which("ffprobe")
     if not probe:
         raise ValueError("ffprobe is required for MP4 uploads")
-    result = subprocess.run(
-        [probe, "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=codec_name:format=duration", "-of", "json", str(path)],
-        capture_output=True, text=True, timeout=15, check=False,
-    )
+    try:
+        result = subprocess.run(
+            [probe, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name:format=duration", "-of", "json", str(path)],
+            capture_output=True, text=True, timeout=15, check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("MP4 check timed out") from exc
     try:
         details = json.loads(result.stdout)
         codec = details["streams"][0]["codec_name"]
@@ -137,6 +141,7 @@ class DisplayState:
         self.shutdown_file, self.shutdown_duration = self._load_media_slot("shutdown.json")
         self.game_title = None
         self.game_media: dict[str, tuple[bytes, str]] = {}
+        self.game_hashes: dict[str, str] = {}
         self.last_heartbeat = 0.0
         self.version = 1
         self.shutting_down = False
@@ -314,6 +319,7 @@ class DisplayState:
                 "has_controls": "controls" in self.game_media,
                 "has_box_art": "box_art" in self.game_media,
                 "has_logo": "logo" in self.game_media,
+                "game_hashes": self.game_hashes.copy(),
                 "gesture_actions": self.gesture_actions.copy(),
                 "language": self.language,
                 "instance_id": self.instance_id,
@@ -330,6 +336,7 @@ class DisplayState:
         if self.game_title and time.monotonic() - self.last_heartbeat > self.timeout_seconds:
             self.game_title = None
             self.game_media = {}
+            self.game_hashes = {}
             self.version += 1
 
     def heartbeat(self) -> None:
@@ -341,6 +348,9 @@ class DisplayState:
             self.shutting_down = False
             self.game_title = title
             self.game_media = media
+            # Content hash: a stable cache key across restarts, unlike the state version.
+            self.game_hashes = {kind: hashlib.sha1(data).hexdigest()[:12]
+                                for kind, (data, _) in media.items()}
             self.last_heartbeat = time.monotonic()
             self.version += 1
 
@@ -349,6 +359,7 @@ class DisplayState:
             self.shutting_down = False
             self.game_title = None
             self.game_media = {}
+            self.game_hashes = {}
             self.version += 1
 
     def show_shutdown(self) -> None:
@@ -356,6 +367,7 @@ class DisplayState:
             self.shutting_down = True
             self.game_title = None
             self.game_media = {}
+            self.game_hashes = {}
             self.version += 1
 
     def reload(self) -> None:
@@ -520,7 +532,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_file(self, path: Path, content_type: str) -> None:
-        size = path.stat().st_size
+        # Open and stat before any header is sent, so OSError here still lets the caller
+        # fall back to the placeholder image.
+        stream = path.open("rb")
+        with stream:
+            self._stream_file(stream, path.stat().st_size, content_type)
+
+    def _stream_file(self, stream, size: int, content_type: str) -> None:
         start, end = 0, size - 1
         code = 200
         requested = self.headers.get("Range", "")
@@ -556,7 +574,7 @@ class Handler(BaseHTTPRequestHandler):
         if code == 206:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.end_headers()
-        with path.open("rb") as stream:
+        try:
             stream.seek(start)
             remaining = length
             while remaining:
@@ -565,6 +583,9 @@ class Handler(BaseHTTPRequestHandler):
                     break
                 self.wfile.write(block)
                 remaining -= len(block)
+        except OSError:
+            # Headers are out already (client left or read failed): just drop the connection.
+            self.close_connection = True
 
     def _send_media(self, selected: Path | None) -> None:
         if selected:
