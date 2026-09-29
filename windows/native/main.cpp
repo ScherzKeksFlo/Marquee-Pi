@@ -29,7 +29,8 @@ enum MenuId {
 enum SettingId {
     S_URL = 2001, S_TOKEN, S_SHOW_TOKEN, S_HELP, S_HOTKEY, S_RETRO_MODE, S_RETRO_PORT,
     S_STARTUP, S_MEDIA, S_OPEN_INI, S_SAVE, S_CANCEL,
-    S_GESTURE0 = 2020
+    S_GESTURE0 = 2020,
+    S_TABS = 2040
 };
 enum MediaId { D_LIST = 3001, D_ADD, D_PREVIEW, D_ACTIVATE, D_BOOT, D_SHUTDOWN, D_REMOVE };
 struct StatusUpdate { bool connected; std::wstring title; };
@@ -40,12 +41,19 @@ static App* currentApp = nullptr;
 static const wchar_t* ACTION_LABELS[] = {
     L"Keine Aktion", L"Marquee anzeigen", L"Box Art anzeigen",
     L"LaunchBox-Logo anzeigen", L"Steuerungsbelegung anzeigen",
-    L"Standardanimation anzeigen", L"RetroArch-Menü öffnen"
+    L"Standardanimation anzeigen", L"RetroArch-Menü öffnen", L"Touchmenü am Pi öffnen"
 };
 static const char* ACTION_IDS[] = {
-    "none", "marquee", "box_art", "logo", "controls", "default", "retroarch_menu"
+    "none", "marquee", "box_art", "logo", "controls", "default", "retroarch_menu", "touch_menu"
 };
-static const char* GESTURE_IDS[] = { "swipe-down", "swipe-up", "swipe-right", "swipe-left" };
+static constexpr int ACTION_COUNT = int(sizeof(ACTION_IDS) / sizeof(ACTION_IDS[0]));
+static_assert(sizeof(ACTION_LABELS) / sizeof(ACTION_LABELS[0]) == size_t(ACTION_COUNT));
+static const char* GESTURE_IDS[] = { "long-press", "swipe-down", "swipe-up", "swipe-right", "swipe-left" };
+static const wchar_t* GESTURE_LABELS[] = {
+    L"Langer Druck", L"Oben nach unten", L"Unten nach oben", L"Links nach rechts", L"Rechts nach links"
+};
+static constexpr int GESTURE_COUNT = int(sizeof(GESTURE_IDS) / sizeof(GESTURE_IDS[0]));
+static constexpr int SETTINGS_PAGES = 4;
 
 static void alert(HWND owner, const std::wstring& message, const wchar_t* title = L"Marquee-Pi") {
     MessageBoxW(owner, message.c_str(), title, MB_OK | MB_ICONINFORMATION);
@@ -470,67 +478,100 @@ void App::onShutdown() {
 
 struct SettingsWindow {
     App* app = nullptr;
-    HWND hwnd = nullptr, url = nullptr, token = nullptr, hotkey = nullptr, retroMode = nullptr, retroPort = nullptr, autostart = nullptr;
-    HWND showToken = nullptr, gestures[4]{};
+    HWND hwnd = nullptr, tabs = nullptr, url = nullptr, token = nullptr, hotkey = nullptr;
+    HWND retroMode = nullptr, retroPort = nullptr, autostart = nullptr, showToken = nullptr;
+    HWND gestures[GESTURE_COUNT]{};
+    std::vector<HWND> pages[SETTINGS_PAGES];
     explicit SettingsWindow(App* owner) : app(owner) {}
+
+    // Adds a control to one tab page; pages other than the visible one are hidden.
+    HWND add(int page, const wchar_t* type, const wchar_t* title, DWORD style,
+             int x, int y, int width, int height, int id = 0) {
+        HWND h = control(hwnd, type, title, style, x, y, width, height, id);
+        pages[page].push_back(h);
+        return h;
+    }
+    void selectPage(int page) {
+        for (int p = 0; p < SETTINGS_PAGES; ++p)
+            for (HWND h : pages[p]) ShowWindow(h, p == page ? SW_SHOW : SW_HIDE);
+    }
+    void showPage(int page) {
+        TabCtrl_SetCurSel(tabs, page);
+        selectPage(page);
+    }
     void create() {
         Settings current;
         { std::lock_guard<std::mutex> guard(app->mutex); current = app->settings; }
-        control(hwnd, L"STATIC", L"Verbindung zum Pi", WS_GROUP, 20, 15, 220, 24);
-        control(hwnd, L"STATIC", L"Pi-Adresse", 0, 20, 48, 160, 22);
-        url = control(hwnd, L"EDIT", current.piUrl.c_str(), WS_BORDER | ES_AUTOHSCROLL,
-                      190, 45, 490, 25, S_URL);
-        control(hwnd, L"STATIC", L"Zugriffstoken", 0, 20, 83, 160, 22);
-        token = control(hwnd, L"EDIT", current.token.c_str(), WS_BORDER | ES_AUTOHSCROLL | ES_PASSWORD,
-                        190, 80, 490, 25, S_TOKEN);
-        showToken = control(hwnd, L"BUTTON", L"Token anzeigen", BS_AUTOCHECKBOX,
-                            190, 112, 135, 26, S_SHOW_TOKEN);
-        control(hwnd, L"BUTTON", L"Hilfe: Token erstellen", BS_PUSHBUTTON,
-                340, 112, 180, 27, S_HELP);
-        control(hwnd, L"STATIC", L"Wischgesten", WS_GROUP, 20, 155, 220, 22);
-        const wchar_t* names[] = {L"Oben nach unten", L"Unten nach oben", L"Links nach rechts", L"Rechts nach links"};
-        for (int i = 0; i < 4; ++i) {
-            int y = 184 + i * 35;
-            control(hwnd, L"STATIC", names[i], 0, 20, y + 3, 165, 22);
-            HWND combo = control(hwnd, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL,
-                                 190, y, 360, 250, S_GESTURE0 + i);
+        tabs = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_TABSTOP,
+                               10, 10, 685, 340, hwnd, (HMENU)(INT_PTR)S_TABS,
+                               GetModuleHandleW(nullptr), nullptr);
+        SendMessageW(tabs, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
+        const wchar_t* pageNames[SETTINGS_PAGES] = {L"Verbindung", L"Gesten", L"RetroArch", L"Allgemein"};
+        for (int i = 0; i < SETTINGS_PAGES; ++i) {
+            TCITEMW item{};
+            item.mask = TCIF_TEXT;
+            item.pszText = const_cast<wchar_t*>(pageNames[i]);
+            SendMessageW(tabs, TCM_INSERTITEMW, i, (LPARAM)&item);
+        }
+
+        // Verbindung
+        add(0, L"STATIC", L"Pi-Adresse", 0, 25, 63, 160, 22);
+        url = add(0, L"EDIT", current.piUrl.c_str(), WS_BORDER | ES_AUTOHSCROLL, 190, 60, 490, 25, S_URL);
+        add(0, L"STATIC", L"Zugriffstoken", 0, 25, 98, 160, 22);
+        token = add(0, L"EDIT", current.token.c_str(), WS_BORDER | ES_AUTOHSCROLL | ES_PASSWORD,
+                    190, 95, 490, 25, S_TOKEN);
+        showToken = add(0, L"BUTTON", L"Token anzeigen", BS_AUTOCHECKBOX, 190, 127, 135, 26, S_SHOW_TOKEN);
+        add(0, L"BUTTON", L"Hilfe: Token erstellen", BS_PUSHBUTTON, 340, 127, 180, 27, S_HELP);
+
+        // Gesten
+        add(1, L"STATIC",
+            L"Legt fest, was am Pi-Display bei welcher Geste passiert. Das Touchmenü (Ansicht, "
+            L"Helligkeit, Status, Neustart) öffnet sich standardmäßig durch langen Druck.",
+            0, 25, 55, 650, 38);
+        for (int i = 0; i < GESTURE_COUNT; ++i) {
+            int y = 102 + i * 35;
+            add(1, L"STATIC", GESTURE_LABELS[i], 0, 25, y + 3, 160, 22);
+            HWND combo = add(1, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL, 190, y, 360, 250, S_GESTURE0 + i);
             gestures[i] = combo;
             for (const wchar_t* label : ACTION_LABELS) SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)label);
-            std::string selected = "none";
+            std::string selected = i == 0 ? "touch_menu" : "none";
             auto it = current.gestures.find(GESTURE_IDS[i]);
             if (it != current.gestures.end()) selected = it->second;
             int index = 0;
-            for (int j = 0; j < 7; ++j) if (selected == ACTION_IDS[j]) index = j;
+            for (int j = 0; j < ACTION_COUNT; ++j) if (selected == ACTION_IDS[j]) index = j;
             SendMessageW(combo, CB_SETCURSEL, index, 0);
         }
-        control(hwnd, L"STATIC", L"RetroArch-Tastenkombination", 0, 20, 332, 170, 22);
-        hotkey = control(hwnd, L"EDIT", current.hotkey.c_str(), WS_BORDER | ES_AUTOHSCROLL,
-                         190, 329, 160, 25, S_HOTKEY);
-        control(hwnd, L"STATIC", L"Beispiele: F1, Ctrl+F1, Shift+F1 (nur im aktiven RetroArch-Fenster).",
-                0, 190, 358, 480, 32);
-        control(hwnd, L"STATIC", L"RetroArch-Steuerung", 0, 20, 393, 170, 22);
-        retroMode = control(hwnd, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL,
-                            190, 390, 360, 120, S_RETRO_MODE);
+        add(1, L"STATIC", L"Ohne zugeordnetes Touchmenü lassen sich Helligkeit und Neustart am Pi nicht mehr aufrufen.",
+            0, 25, 285, 650, 22);
+
+        // RetroArch
+        add(2, L"STATIC", L"Tastenkombination", 0, 25, 65, 160, 22);
+        hotkey = add(2, L"EDIT", current.hotkey.c_str(), WS_BORDER | ES_AUTOHSCROLL, 190, 62, 160, 25, S_HOTKEY);
+        add(2, L"STATIC", L"Beispiele: F1, Ctrl+F1, Shift+F1 (nur im aktiven RetroArch-Fenster).",
+            0, 190, 92, 480, 32);
+        add(2, L"STATIC", L"Steuerungsart", 0, 25, 137, 160, 22);
+        retroMode = add(2, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL, 190, 134, 360, 120, S_RETRO_MODE);
         SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)L"Tastaturkürzel senden");
         SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)L"Lokaler RetroArch-Netzwerkbefehl");
         SendMessageW(retroMode, CB_SETCURSEL, current.retroArchNetworkControl ? 1 : 0, 0);
-        control(hwnd, L"STATIC", L"Netzwerk-Port", 0, 20, 428, 170, 22);
-        retroPort = control(hwnd, L"EDIT", std::to_wstring(current.retroArchNetworkPort).c_str(),
-                            WS_BORDER | ES_AUTOHSCROLL | ES_NUMBER, 190, 425, 100, 25, S_RETRO_PORT);
-        control(hwnd, L"STATIC", L"Für Netzwerkmodus: RetroArch > Einstellungen > Netzwerk > Netzwerkbefehle aktivieren.",
-                0, 190, 456, 505, 25);
-        control(hwnd, L"STATIC", L"Allgemein", WS_GROUP, 20, 490, 220, 22);
-        autostart = control(hwnd, L"BUTTON", L"Mit Windows starten", BS_AUTOCHECKBOX,
-                             20, 518, 180, 26, S_STARTUP);
+        add(2, L"STATIC", L"Netzwerk-Port", 0, 25, 175, 160, 22);
+        retroPort = add(2, L"EDIT", std::to_wstring(current.retroArchNetworkPort).c_str(),
+                        WS_BORDER | ES_AUTOHSCROLL | ES_NUMBER, 190, 172, 100, 25, S_RETRO_PORT);
+        add(2, L"STATIC", L"Für Netzwerkmodus: RetroArch > Einstellungen > Netzwerk > Netzwerkbefehle aktivieren.",
+            0, 190, 202, 480, 40);
+
+        // Allgemein
+        autostart = add(3, L"BUTTON", L"Mit Windows starten", BS_AUTOCHECKBOX, 25, 62, 220, 26, S_STARTUP);
         SendMessageW(autostart, BM_SETCHECK, current.autostart ? BST_CHECKED : BST_UNCHECKED, 0);
-        control(hwnd, L"BUTTON", L"Medien verwalten...", BS_PUSHBUTTON,
-                220, 516, 210, 28, S_MEDIA);
-        control(hwnd, L"BUTTON", L"INI-Datei öffnen", BS_PUSHBUTTON,
-                445, 516, 150, 28, S_OPEN_INI);
-        control(hwnd, L"BUTTON", L"Speichern", BS_DEFPUSHBUTTON,
-                475, 560, 100, 30, S_SAVE);
-        control(hwnd, L"BUTTON", L"Abbrechen", BS_PUSHBUTTON,
-                585, 560, 100, 30, S_CANCEL);
+        add(3, L"BUTTON", L"Medien verwalten...", BS_PUSHBUTTON, 25, 105, 210, 28, S_MEDIA);
+        add(3, L"STATIC", L"Standardmedium, Boot-Splash und Shutdown-Medium hochladen.", 0, 250, 111, 420, 22);
+        add(3, L"BUTTON", L"INI-Datei öffnen", BS_PUSHBUTTON, 25, 145, 210, 28, S_OPEN_INI);
+        add(3, L"STATIC", L"Alle Einstellungen im Texteditor; danach im Tray \"Einstellungen neu laden\".",
+            0, 250, 151, 420, 36);
+
+        control(hwnd, L"BUTTON", L"Speichern", BS_DEFPUSHBUTTON, 485, 362, 100, 30, S_SAVE);
+        control(hwnd, L"BUTTON", L"Abbrechen", BS_PUSHBUTTON, 595, 362, 100, 30, S_CANCEL);
+        showPage(0);
     }
     void save() {
         Settings next;
@@ -540,17 +581,31 @@ struct SettingsWindow {
         next.hotkey = readText(hotkey);
         next.retroArchNetworkControl = SendMessageW(retroMode, CB_GETCURSEL, 0, 0) == 1;
         try { next.retroArchNetworkPort = std::stoi(readText(retroPort)); }
-        catch (...) { alert(hwnd, L"Ungültiger RetroArch-Netzwerk-Port."); return; }
+        catch (...) { showPage(2); alert(hwnd, L"Ungültiger RetroArch-Netzwerk-Port."); return; }
         if (next.retroArchNetworkPort < 1 || next.retroArchNetworkPort > 65535) {
-            alert(hwnd, L"RetroArch-Netzwerk-Port muss zwischen 1 und 65535 liegen."); return;
+            showPage(2); alert(hwnd, L"RetroArch-Netzwerk-Port muss zwischen 1 und 65535 liegen."); return;
         }
         next.autostart = SendMessageW(autostart, BM_GETCHECK, 0, 0) == BST_CHECKED;
-        for (int i = 0; i < 4; ++i) {
+        bool menuReachable = false;
+        for (int i = 0; i < GESTURE_COUNT; ++i) {
             int selected = int(SendMessageW(gestures[i], CB_GETCURSEL, 0, 0));
-            next.gestures[GESTURE_IDS[i]] = ACTION_IDS[selected >= 0 && selected < 7 ? selected : 0];
+            next.gestures[GESTURE_IDS[i]] = ACTION_IDS[selected >= 0 && selected < ACTION_COUNT ? selected : 0];
+            menuReachable = menuReachable || next.gestures[GESTURE_IDS[i]] == "touch_menu";
         }
-        if (!next.configured()) { alert(hwnd, L"Bitte HTTP-Pi-Adresse und Token mit mindestens 24 Zeichen eingeben."); return; }
-        if (!validHotkey(next.hotkey)) { alert(hwnd, L"Ungültige Tastenkombination. Beispiel: Ctrl+Shift+F1."); return; }
+        if (!next.configured()) {
+            showPage(0);
+            alert(hwnd, L"Bitte HTTP-Pi-Adresse und Token mit mindestens 24 Zeichen eingeben."); return;
+        }
+        if (!validHotkey(next.hotkey)) {
+            showPage(2); alert(hwnd, L"Ungültige Tastenkombination. Beispiel: Ctrl+Shift+F1."); return;
+        }
+        if (!menuReachable) {
+            showPage(1);
+            if (MessageBoxW(hwnd,
+                            L"Dem Touchmenü ist keine Geste zugeordnet. Helligkeit, Status sowie Neustart "
+                            L"und Herunterfahren lassen sich am Pi dann nicht mehr aufrufen.\n\nTrotzdem speichern?",
+                            L"Marquee-Pi", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
+        }
         try {
             setAutostart(next.autostart);
             saveSettings(next);
@@ -574,9 +629,13 @@ void App::showSettings() {
         registered = RegisterClassW(&klass) != 0;
     }
     auto* state = new SettingsWindow(this);
+    constexpr DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN;
+    RECT frame{0, 0, 705, 405};
+    AdjustWindowRectEx(&frame, style, FALSE, WS_EX_DLGMODALFRAME);
     HWND window = CreateWindowExW(WS_EX_DLGMODALFRAME, L"MarqueePiSettings",
-                                 L"Marquee-Pi - Einstellungen", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-                                 CW_USEDEFAULT, CW_USEDEFAULT, 725, 650, hwnd, nullptr,
+                                 L"Marquee-Pi - Einstellungen", style,
+                                 CW_USEDEFAULT, CW_USEDEFAULT, frame.right - frame.left,
+                                 frame.bottom - frame.top, hwnd, nullptr,
                                  GetModuleHandleW(nullptr), state);
     if (!window) { delete state; alert(hwnd, L"Einstellungsfenster konnte nicht geöffnet werden."); return; }
     settingsWindow = window;
@@ -593,6 +652,12 @@ static LRESULT CALLBACK settingsProc(HWND hwnd, UINT message, WPARAM wp, LPARAM 
     if (!state) return DefWindowProcW(hwnd, message, wp, lp);
     switch (message) {
     case WM_CREATE: state->create(); return 0;
+    case WM_NOTIFY: {
+        const NMHDR* header = (const NMHDR*)lp;
+        if (header->idFrom == S_TABS && header->code == TCN_SELCHANGE)
+            state->selectPage(TabCtrl_GetCurSel(state->tabs));
+        return 0;
+    }
     case WM_COMMAND:
         switch (LOWORD(wp)) {
         case S_SHOW_TOKEN:
@@ -862,7 +927,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR commandLine, int) {
             try { piRequest(settings, L"POST", L"/v1/shutdown", {}, L"", L"", 3000); return 0; }
             catch (...) { return 1; }
         }
-        INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES};
+        INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES | ICC_TAB_CLASSES};
         InitCommonControlsEx(&controls);
         App app(std::move(settings));
         currentApp = &app;
