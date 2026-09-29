@@ -56,7 +56,7 @@ sudo cp -a marquee_pi.py start-kiosk.sh show-shutdown.sh static /opt/marquee-pi/
 sudo chmod 755 /opt/marquee-pi/start-kiosk.sh /opt/marquee-pi/show-shutdown.sh
 sudo install -o root -g root -m 755 configure-quiet-boot.sh /usr/local/sbin/marquee-pi-configure-quiet-boot
 sudo install -d -m 755 /etc/X11/xorg.conf.d /etc/chromium/policies/managed
-sudo install -m 644 xorg-modesetting.example.conf /etc/X11/xorg.conf.d/20-arcade-modesetting.conf
+sudo install -m 644 xorg-modesetting.example.conf /etc/X11/xorg.conf.d/20-marquee-pi-modesetting.conf
 sudo install -m 644 chromium-policy.example.json /etc/chromium/policies/managed/marquee-pi.json
 sudo install -d -o marqueepi -g marqueepi -m 750 /var/lib/marquee-pi
 sudo install -d -o root -g marqueepi -m 750 /etc/marquee-pi
