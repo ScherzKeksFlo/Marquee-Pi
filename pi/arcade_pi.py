@@ -460,6 +460,9 @@ class Handler(BaseHTTPRequestHandler):
         except subprocess.TimeoutExpired:
             self._json(503, {"error": "Power authorization timed out"})
             return
+        except OSError:
+            self._json(503, {"error": "Power authorization unavailable"})
+            return
         if authorization.returncode != 0:
             self._json(503, {"error": "Power authorization unavailable"})
             return

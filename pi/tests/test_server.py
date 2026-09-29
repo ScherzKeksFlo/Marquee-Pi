@@ -383,6 +383,14 @@ class MenuApiTests(unittest.TestCase):
                 self.assertEqual(run.call_args.args[0], ["systemctl", action])
         self.assertTrue(self.state.describe()["shutting_down"])
 
+    def test_menu_power_reports_missing_pkcheck_as_unavailable(self):
+        with patch("arcade_pi.process_identity", return_value="1,2,3"), \
+             patch("arcade_pi.subprocess.run", side_effect=FileNotFoundError):
+            with self.assertRaises(HTTPError) as result:
+                self.post("/ui/power", {"action": "poweroff"})
+        self.assertEqual(result.exception.code, 503)
+        self.assertFalse(self.state.describe()["shutting_down"])
+
     def test_menu_power_disabled_when_not_configured(self):
         self.server.power_commands_enabled = False
         with self.assertRaises(HTTPError) as result:
