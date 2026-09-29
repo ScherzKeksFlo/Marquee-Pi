@@ -18,6 +18,8 @@ struct Settings {
     bool retroArchNetworkControl = false;
     int retroArchNetworkPort = 55355;
     bool autostart = false;
+    // "auto" follows the Windows display language, otherwise "en" or "de".
+    std::string language = "auto";
     // Long press keeps opening the Pi touch menu unless it is reassigned.
     std::map<std::string, std::string> gestures{{"long-press", "touch_menu"}};
     bool configured() const;
@@ -66,5 +68,7 @@ HttpResult piRequest(const Settings& settings, const std::wstring& method,
 std::string gamePayload(const GameMessage& game);
 std::vector<std::string> gameWarnings(const std::string& response);
 std::string gesturePayload(const Settings& settings);
+// Tells the Pi which language its touch menu should use (the resolved UI language).
+std::string languagePayload(const Settings& settings);
 GameMessage parseGameMessage(const std::string& json);
 std::wstring errorText(const std::exception& error);

@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "strings.hpp"
 #include "thumbnail.hpp"
 #include <mfapi.h>
 #include <mfidl.h>
@@ -157,6 +158,42 @@ int main() {
     ini.erase(start, ini.find('\n', start) - start + 1);
     writeFile(settingsPath(), ini);
     assert(loadSettings().gestures.at("long-press") == "touch_menu");
+
+    // Language: follows Windows by default, persists an explicit choice, ignores junk.
+    assert(loadSettings().language == "auto");
+    settings.language = "de";
+    saveSettings(settings);
+    assert(loadSettings().language == "de");
+    assert(languagePayload(loadSettings()) == R"({"language":"de"})");
+    settings.language = "en";
+    saveSettings(settings);
+    assert(loadSettings().language == "en");
+    assert(languagePayload(loadSettings()) == R"({"language":"en"})");
+    ini = readFile(settingsPath());
+    start = ini.find("Language=en");
+    assert(start != std::string::npos);
+    ini.replace(start, 11, "Language=klingon");
+    writeFile(settingsPath(), ini);
+    assert(loadSettings().language == "auto");
+    assert(resolveLanguage("de") == "de" && resolveLanguage("en") == "en");
+    assert(resolveLanguage("auto") == "de" || resolveLanguage("auto") == "en");
+    assert(resolveLanguage("klingon") == resolveLanguage("auto"));
+
+    // Both string tables are complete, and the English one really is English.
+    for (int i = 0; i < int(Str::Count); ++i) {
+        setUiLanguage("en");
+        const std::wstring english = tr(Str(i));
+        setUiLanguage("de");
+        const std::wstring german = tr(Str(i));
+        assert(!english.empty() && !german.empty());
+        for (wchar_t c : english) assert(c != L'ä' && c != L'ö' && c != L'ü' && c != L'ß');
+    }
+    setUiLanguage("en");
+    assert(std::wstring(tr(Str::TabMedia)) == L"Media");
+    setUiLanguage("de");
+    assert(std::wstring(tr(Str::TabMedia)) == L"Medien");
+    assert(std::wstring(trAt(Str::TabConnection, 4)) == L"Allgemein");
+    setUiLanguage("en");
 
     // Thumbnails: images fill a fixed-size DIB, broken or missing files yield nullptr.
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);

@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "strings.hpp"
 #include "thumbnail.hpp"
 #include <windows.h>
 #include <commctrl.h>
@@ -32,28 +33,22 @@ enum SettingId {
     S_URL = 2001, S_TOKEN, S_SHOW_TOKEN, S_HELP, S_HOTKEY, S_RETRO_MODE, S_RETRO_PORT,
     S_STARTUP, S_OPEN_INI, S_SAVE, S_CANCEL,
     S_GESTURE0 = 2020,
-    S_TABS = 2040
+    S_TABS = 2040,
+    S_LANGUAGE = 2041
 };
 enum MediaId { D_LIST = 3001, D_ADD, D_PREVIEW, D_ACTIVATE, D_BOOT, D_SHUTDOWN, D_REMOVE };
 struct StatusUpdate { bool connected; std::wstring title; };
 struct SettingsWindow;
 class App;
 static App* currentApp = nullptr;
-static const wchar_t* ACTION_LABELS[] = {
-    L"Keine Aktion", L"Marquee anzeigen", L"Box Art anzeigen",
-    L"LaunchBox-Logo anzeigen", L"Steuerungsbelegung anzeigen",
-    L"Standardanimation anzeigen", L"RetroArch-Menü öffnen", L"Touchmenü am Pi öffnen"
-};
 static const char* ACTION_IDS[] = {
     "none", "marquee", "box_art", "logo", "controls", "default", "retroarch_menu", "touch_menu"
 };
 static constexpr int ACTION_COUNT = int(sizeof(ACTION_IDS) / sizeof(ACTION_IDS[0]));
-static_assert(sizeof(ACTION_LABELS) / sizeof(ACTION_LABELS[0]) == size_t(ACTION_COUNT));
+static_assert(int(Str::ActionTouchMenu) - int(Str::ActionNone) + 1 == ACTION_COUNT, "action labels out of sync");
 static const char* GESTURE_IDS[] = { "long-press", "swipe-down", "swipe-up", "swipe-right", "swipe-left" };
-static const wchar_t* GESTURE_LABELS[] = {
-    L"Langer Druck", L"Oben nach unten", L"Unten nach oben", L"Links nach rechts", L"Rechts nach links"
-};
 static constexpr int GESTURE_COUNT = int(sizeof(GESTURE_IDS) / sizeof(GESTURE_IDS[0]));
+static_assert(int(Str::GestureLeft) - int(Str::GestureLongPress) + 1 == GESTURE_COUNT, "gesture labels out of sync");
 enum SettingsPage { PAGE_CONNECTION, PAGE_GESTURES, PAGE_MEDIA, PAGE_RETROARCH, PAGE_GENERAL, SETTINGS_PAGES };
 static constexpr int THUMB_W = 112, THUMB_H = 70, MEDIA_ITEM_HEIGHT = 78;
 constexpr UINT WM_SELECT_PAGE = WM_APP + 30, WM_THUMB = WM_APP + 31;
@@ -178,9 +173,9 @@ public:
     UINT taskbarCreated = 0;
     bool connected = false;
     FILETIME startedUtc{};
-    std::wstring status = L"Pi: Verbindung wird geprüft";
+    std::wstring status;
 
-    explicit App(Settings initial) : settings(std::move(initial)) {}
+    explicit App(Settings initial) : settings(std::move(initial)) { status = tr(Str::StatusChecking); }
     bool start(HINSTANCE instance);
     void close();
     void addIcon(bool add);
@@ -252,29 +247,30 @@ void App::addIcon(bool add) {
     data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     data.uCallbackMessage = WM_TRAY;
     data.hIcon = connected ? onlineIcon : offlineIcon;
-    wcscpy_s(data.szTip, connected ? L"Marquee-Pi - Pi verbunden" : L"Marquee-Pi - Pi nicht erreichbar");
+    wcscpy_s(data.szTip, connected ? tr(Str::TipConnected) : tr(Str::TipDisconnected));
     Shell_NotifyIconW(add ? NIM_ADD : NIM_MODIFY, &data);
 }
 void App::setStatus(const StatusUpdate& update) {
     connected = update.connected;
-    status = connected ? L"Pi verbunden - " + update.title : L"Pi nicht erreichbar";
+    status = connected ? std::wstring(tr(Str::StatusConnected)) + update.title
+                       : std::wstring(tr(Str::StatusUnreachable));
     addIcon(false);
 }
 void App::menu() {
     HMENU popup = CreatePopupMenu();
     AppendMenuW(popup, MF_STRING | MF_GRAYED, 0, status.c_str());
     AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(popup, MF_STRING, M_MEDIA, L"Medien verwalten...");
-    AppendMenuW(popup, MF_STRING, M_DEFAULT, L"Standardlogo anzeigen");
-    AppendMenuW(popup, MF_STRING, M_RELOAD, L"Anzeige neu laden");
+    AppendMenuW(popup, MF_STRING, M_MEDIA, tr(Str::MenuMedia));
+    AppendMenuW(popup, MF_STRING, M_DEFAULT, tr(Str::MenuDefault));
+    AppendMenuW(popup, MF_STRING, M_RELOAD, tr(Str::MenuReload));
     AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(popup, MF_STRING, M_REBOOT, L"Pi neu starten");
-    AppendMenuW(popup, MF_STRING, M_SHUTDOWN, L"Pi herunterfahren");
+    AppendMenuW(popup, MF_STRING, M_REBOOT, tr(Str::MenuReboot));
+    AppendMenuW(popup, MF_STRING, M_SHUTDOWN, tr(Str::MenuShutdown));
     AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(popup, MF_STRING, M_SETTINGS, L"Einstellungen...");
-    AppendMenuW(popup, MF_STRING, M_OPEN_INI, L"INI-Datei öffnen");
-    AppendMenuW(popup, MF_STRING, M_LOAD_INI, L"Einstellungen neu laden");
-    AppendMenuW(popup, MF_STRING, M_EXIT, L"Programm beenden");
+    AppendMenuW(popup, MF_STRING, M_SETTINGS, tr(Str::MenuSettings));
+    AppendMenuW(popup, MF_STRING, M_OPEN_INI, tr(Str::MenuOpenIni));
+    AppendMenuW(popup, MF_STRING, M_LOAD_INI, tr(Str::MenuReloadIni));
+    AppendMenuW(popup, MF_STRING, M_EXIT, tr(Str::MenuExit));
     POINT point{}; GetCursorPos(&point);
     SetForegroundWindow(hwnd);
     int id = TrackPopupMenu(popup, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, hwnd, nullptr);
@@ -291,8 +287,7 @@ void App::command(int id) {
     if (id == M_LOAD_INI) { reloadSettings(); return; }
     if (id == M_EXIT) { DestroyWindow(hwnd); return; }
     if (id == M_REBOOT || id == M_SHUTDOWN) {
-        const wchar_t* prompt = id == M_REBOOT ? L"Pi wirklich neu starten?" :
-            L"Pi wirklich herunterfahren? Er startet erst nach einem neuen Stromzyklus.";
+        const wchar_t* prompt = id == M_REBOOT ? tr(Str::ConfirmReboot) : tr(Str::ConfirmShutdown);
         if (MessageBoxW(hwnd, prompt, L"Marquee-Pi", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
     }
     try {
@@ -314,11 +309,12 @@ void App::reloadSettings() {
         if (!loaded.configured() || !validHotkey(loaded.hotkey))
             throw std::runtime_error("INI has invalid Pi URL, token or hotkey");
         setAutostart(loaded.autostart);
+        setUiLanguage(resolveLanguage(loaded.language));
         {
             std::lock_guard<std::mutex> guard(mutex);
             settings = loaded; gestureDirty = true; needsSync = game.has_value(); ++configVersion;
         }
-    } catch (const std::exception& error) { alert(hwnd, errorText(error), L"INI neu laden"); }
+    } catch (const std::exception& error) { alert(hwnd, errorText(error), tr(Str::TitleReloadIni)); }
 }
 void App::onGame(GameMessage message) {
     std::lock_guard<std::mutex> guard(mutex);
@@ -350,8 +346,8 @@ void App::pollLoop() {
                 auto response = piRequest(copy, L"GET", L"/v1/status");
                 auto json = mini::parse(response.body);
                 online = true;
-                std::wstring title = fromUtf8(json.get("game_title").value("Standardmedium"));
-                if (title.empty()) title = L"Standardmedium";
+                std::wstring title = fromUtf8(json.get("game_title").value(""));
+                if (title.empty()) title = tr(Str::DefaultMediaTitle);
                 auto* update = new StatusUpdate{true, title};
                 if (!PostMessageW(hwnd, WM_STATUS, 0, (LPARAM)update)) delete update;
 
@@ -372,8 +368,15 @@ void App::pollLoop() {
                 if (dirty) {
                     piRequest(copy, L"POST", L"/v1/gesture-config", gesturePayload(copy),
                               L"application/json; charset=utf-8");
+                    try {  // a Pi without language support answers 404; the gestures above still count
+                        piRequest(copy, L"POST", L"/v1/language", languagePayload(copy),
+                                  L"application/json; charset=utf-8");
+                    } catch (const HttpError& error) {
+                        if (error.status != 404) throw;
+                    }
                     std::lock_guard<std::mutex> guard(mutex);
-                    if (configVersion == 0 || settings.gestures == copy.gestures) gestureDirty = false;
+                    if (configVersion == 0 || (settings.gestures == copy.gestures &&
+                                               settings.language == copy.language)) gestureDirty = false;
                 }
                 if (reset) {
                     piRequest(copy, L"POST", L"/v1/default");
@@ -465,16 +468,16 @@ void App::pipeLoop() {
 void App::onShutdown() {
     std::wstring type = recentShutdownType(startedUtc);
     if (!isPowerOffType(type)) {
-        logShutdown(L"Pi bleibt eingeschaltet; Windows-Typ: " + (type.empty() ? L"unbekannt" : type));
+        logShutdown(L"Pi stays on; Windows type: " + (type.empty() ? L"unknown" : type));
         return;
     }
     try {
         Settings copy;
         { std::lock_guard<std::mutex> guard(mutex); copy = settings; }
         piRequest(copy, L"POST", L"/v1/shutdown", {}, L"", L"", 3000);
-        logShutdown(L"Pi-Shutdown-Befehl gesendet; Windows-Typ: " + type);
+        logShutdown(L"Pi shutdown command sent; Windows type: " + type);
     } catch (const std::exception& error) {
-        logShutdown(L"Pi-Shutdown fehlgeschlagen: " + errorText(error));
+        logShutdown(L"Pi shutdown failed: " + errorText(error));
     }
 }
 
@@ -486,7 +489,7 @@ struct SettingsWindow {
     App* app = nullptr;
     int initialPage = PAGE_CONNECTION;
     HWND hwnd = nullptr, tabs = nullptr, url = nullptr, token = nullptr, hotkey = nullptr;
-    HWND retroMode = nullptr, retroPort = nullptr, autostart = nullptr, showToken = nullptr;
+    HWND retroMode = nullptr, retroPort = nullptr, autostart = nullptr, showToken = nullptr, languageBox = nullptr;
     HWND gestures[GESTURE_COUNT]{}, mediaList = nullptr;
     std::vector<HWND> pages[SETTINGS_PAGES];
 
@@ -534,35 +537,32 @@ struct SettingsWindow {
                                10, 10, 685, 410, hwnd, (HMENU)(INT_PTR)S_TABS,
                                GetModuleHandleW(nullptr), nullptr);
         SendMessageW(tabs, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
-        const wchar_t* pageNames[SETTINGS_PAGES] = {L"Verbindung", L"Gesten", L"Medien", L"RetroArch", L"Allgemein"};
-        for (int i = 0; i < SETTINGS_PAGES; ++i) {
+                for (int i = 0; i < SETTINGS_PAGES; ++i) {
             TCITEMW item{};
             item.mask = TCIF_TEXT;
-            item.pszText = const_cast<wchar_t*>(pageNames[i]);
+            item.pszText = const_cast<wchar_t*>(trAt(Str::TabConnection, i));
             SendMessageW(tabs, TCM_INSERTITEMW, i, (LPARAM)&item);
         }
 
-        // Verbindung
-        add(PAGE_CONNECTION, L"STATIC", L"Pi-Adresse", 0, 25, 63, 160, 22);
+        // Connection
+        add(PAGE_CONNECTION, L"STATIC", tr(Str::PiAddress), 0, 25, 63, 160, 22);
         url = add(PAGE_CONNECTION, L"EDIT", current.piUrl.c_str(), WS_BORDER | ES_AUTOHSCROLL, 190, 60, 490, 25, S_URL);
-        add(PAGE_CONNECTION, L"STATIC", L"Zugriffstoken", 0, 25, 98, 160, 22);
+        add(PAGE_CONNECTION, L"STATIC", tr(Str::AccessToken), 0, 25, 98, 160, 22);
         token = add(PAGE_CONNECTION, L"EDIT", current.token.c_str(), WS_BORDER | ES_AUTOHSCROLL | ES_PASSWORD,
                     190, 95, 490, 25, S_TOKEN);
-        showToken = add(PAGE_CONNECTION, L"BUTTON", L"Token anzeigen", BS_AUTOCHECKBOX, 190, 127, 135, 26, S_SHOW_TOKEN);
-        add(PAGE_CONNECTION, L"BUTTON", L"Hilfe: Token erstellen", BS_PUSHBUTTON, 340, 127, 180, 27, S_HELP);
+        showToken = add(PAGE_CONNECTION, L"BUTTON", tr(Str::ShowToken), BS_AUTOCHECKBOX, 190, 127, 135, 26, S_SHOW_TOKEN);
+        add(PAGE_CONNECTION, L"BUTTON", tr(Str::HelpToken), BS_PUSHBUTTON, 340, 127, 180, 27, S_HELP);
 
-        // Gesten
-        add(PAGE_GESTURES, L"STATIC",
-            L"Legt fest, was am Pi-Display bei welcher Geste passiert. Das Touchmenü (Ansicht, "
-            L"Helligkeit, Status, Neustart) öffnet sich standardmäßig durch langen Druck.",
-            0, 25, 55, 650, 38);
+        // Gestures
+        add(PAGE_GESTURES, L"STATIC", tr(Str::GesturesIntro), 0, 25, 55, 650, 38);
         for (int i = 0; i < GESTURE_COUNT; ++i) {
             int y = 102 + i * 35;
-            add(PAGE_GESTURES, L"STATIC", GESTURE_LABELS[i], 0, 25, y + 3, 160, 22);
+            add(PAGE_GESTURES, L"STATIC", trAt(Str::GestureLongPress, i), 0, 25, y + 3, 160, 22);
             HWND combo = add(PAGE_GESTURES, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL,
                              190, y, 360, 250, S_GESTURE0 + i);
             gestures[i] = combo;
-            for (const wchar_t* label : ACTION_LABELS) SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)label);
+            for (int a = 0; a < ACTION_COUNT; ++a)
+                SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)trAt(Str::ActionNone, a));
             std::string selected = i == 0 ? "touch_menu" : "none";
             auto it = current.gestures.find(GESTURE_IDS[i]);
             if (it != current.gestures.end()) selected = it->second;
@@ -570,50 +570,49 @@ struct SettingsWindow {
             for (int j = 0; j < ACTION_COUNT; ++j) if (selected == ACTION_IDS[j]) index = j;
             SendMessageW(combo, CB_SETCURSEL, index, 0);
         }
-        add(PAGE_GESTURES, L"STATIC",
-            L"Ohne zugeordnetes Touchmenü lassen sich Helligkeit und Neustart am Pi nicht mehr aufrufen.",
-            0, 25, 285, 650, 22);
+        add(PAGE_GESTURES, L"STATIC", tr(Str::GesturesWarning), 0, 25, 285, 650, 22);
 
-        // Medien
+        // Media
         mediaList = add(PAGE_MEDIA, L"LISTBOX", L"",
                         LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | WS_BORDER | WS_VSCROLL,
                         25, 50, 650, MEDIA_ITEM_HEIGHT * 4 + 2, D_LIST);
         const int by = 50 + MEDIA_ITEM_HEIGHT * 4 + 12;
-        add(PAGE_MEDIA, L"BUTTON", L"Hinzufügen", BS_PUSHBUTTON, 25, by, 90, 30, D_ADD);
-        add(PAGE_MEDIA, L"BUTTON", L"Vorschau", BS_PUSHBUTTON, 123, by, 80, 30, D_PREVIEW);
-        add(PAGE_MEDIA, L"BUTTON", L"Entfernen", BS_PUSHBUTTON, 211, by, 80, 30, D_REMOVE);
-        add(PAGE_MEDIA, L"BUTTON", L"Als Standard", BS_PUSHBUTTON, 322, by, 100, 30, D_ACTIVATE);
-        add(PAGE_MEDIA, L"BUTTON", L"Als Boot-Splash", BS_PUSHBUTTON, 430, by, 115, 30, D_BOOT);
-        add(PAGE_MEDIA, L"BUTTON", L"Als Shutdown-Medium", BS_PUSHBUTTON, 553, by, 122, 30, D_SHUTDOWN);
+        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaAdd), BS_PUSHBUTTON, 25, by, 75, 30, D_ADD);
+        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaPreview), BS_PUSHBUTTON, 108, by, 75, 30, D_PREVIEW);
+        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaRemove), BS_PUSHBUTTON, 191, by, 75, 30, D_REMOVE);
+        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaUseDefault), BS_PUSHBUTTON, 279, by, 105, 30, D_ACTIVATE);
+        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaUseBoot), BS_PUSHBUTTON, 392, by, 125, 30, D_BOOT);
+        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaUseShutdown), BS_PUSHBUTTON, 525, by, 150, 30, D_SHUTDOWN);
 
         // RetroArch
-        add(PAGE_RETROARCH, L"STATIC", L"Tastenkombination", 0, 25, 65, 160, 22);
+        add(PAGE_RETROARCH, L"STATIC", tr(Str::Hotkey), 0, 25, 65, 160, 22);
         hotkey = add(PAGE_RETROARCH, L"EDIT", current.hotkey.c_str(), WS_BORDER | ES_AUTOHSCROLL,
                      190, 62, 160, 25, S_HOTKEY);
-        add(PAGE_RETROARCH, L"STATIC", L"Beispiele: F1, Ctrl+F1, Shift+F1 (nur im aktiven RetroArch-Fenster).",
-            0, 190, 92, 480, 32);
-        add(PAGE_RETROARCH, L"STATIC", L"Steuerungsart", 0, 25, 137, 160, 22);
+        add(PAGE_RETROARCH, L"STATIC", tr(Str::HotkeyExamples), 0, 190, 92, 480, 32);
+        add(PAGE_RETROARCH, L"STATIC", tr(Str::ControlMethod), 0, 25, 137, 160, 22);
         retroMode = add(PAGE_RETROARCH, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL, 190, 134, 360, 120, S_RETRO_MODE);
-        SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)L"Tastaturkürzel senden");
-        SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)L"Lokaler RetroArch-Netzwerkbefehl");
+        SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)tr(Str::ModeKeyboard));
+        SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)tr(Str::ModeNetwork));
         SendMessageW(retroMode, CB_SETCURSEL, current.retroArchNetworkControl ? 1 : 0, 0);
-        add(PAGE_RETROARCH, L"STATIC", L"Netzwerk-Port", 0, 25, 175, 160, 22);
+        add(PAGE_RETROARCH, L"STATIC", tr(Str::NetworkPort), 0, 25, 175, 160, 22);
         retroPort = add(PAGE_RETROARCH, L"EDIT", std::to_wstring(current.retroArchNetworkPort).c_str(),
                         WS_BORDER | ES_AUTOHSCROLL | ES_NUMBER, 190, 172, 100, 25, S_RETRO_PORT);
-        add(PAGE_RETROARCH, L"STATIC",
-            L"Für Netzwerkmodus: RetroArch > Einstellungen > Netzwerk > Netzwerkbefehle aktivieren.",
-            0, 190, 202, 480, 40);
+        add(PAGE_RETROARCH, L"STATIC", tr(Str::NetworkHint), 0, 190, 202, 480, 40);
 
-        // Allgemein
-        autostart = add(PAGE_GENERAL, L"BUTTON", L"Mit Windows starten", BS_AUTOCHECKBOX, 25, 62, 220, 26, S_STARTUP);
+        // General
+        autostart = add(PAGE_GENERAL, L"BUTTON", tr(Str::Autostart), BS_AUTOCHECKBOX, 25, 62, 220, 26, S_STARTUP);
         SendMessageW(autostart, BM_SETCHECK, current.autostart ? BST_CHECKED : BST_UNCHECKED, 0);
-        add(PAGE_GENERAL, L"BUTTON", L"INI-Datei öffnen", BS_PUSHBUTTON, 25, 105, 210, 28, S_OPEN_INI);
-        add(PAGE_GENERAL, L"STATIC",
-            L"Alle Einstellungen im Texteditor; danach im Tray \"Einstellungen neu laden\".",
-            0, 250, 111, 420, 36);
+        add(PAGE_GENERAL, L"BUTTON", tr(Str::OpenIni), BS_PUSHBUTTON, 25, 105, 210, 28, S_OPEN_INI);
+        add(PAGE_GENERAL, L"STATIC", tr(Str::IniHint), 0, 250, 111, 420, 36);
+        add(PAGE_GENERAL, L"STATIC", tr(Str::Language), 0, 25, 165, 160, 22);
+        languageBox = add(PAGE_GENERAL, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL, 190, 162, 300, 120, S_LANGUAGE);
+        for (Str label : {Str::LanguageAuto, Str::LanguageEnglish, Str::LanguageGerman})
+            SendMessageW(languageBox, CB_ADDSTRING, 0, (LPARAM)tr(label));
+        SendMessageW(languageBox, CB_SETCURSEL, current.language == "en" ? 1 : current.language == "de" ? 2 : 0, 0);
+        add(PAGE_GENERAL, L"STATIC", tr(Str::LanguageHint), 0, 190, 192, 480, 22);
 
-        control(hwnd, L"BUTTON", L"Speichern", BS_DEFPUSHBUTTON, 485, 432, 100, 30, S_SAVE);
-        control(hwnd, L"BUTTON", L"Abbrechen", BS_PUSHBUTTON, 595, 432, 100, 30, S_CANCEL);
+        control(hwnd, L"BUTTON", tr(Str::Save), BS_DEFPUSHBUTTON, 485, 432, 100, 30, S_SAVE);
+        control(hwnd, L"BUTTON", tr(Str::Cancel), BS_PUSHBUTTON, 595, 432, 100, 30, S_CANCEL);
         refreshMedia();
         showPage(initialPage);
     }
@@ -625,12 +624,16 @@ struct SettingsWindow {
         next.hotkey = readText(hotkey);
         next.retroArchNetworkControl = SendMessageW(retroMode, CB_GETCURSEL, 0, 0) == 1;
         try { next.retroArchNetworkPort = std::stoi(readText(retroPort)); }
-        catch (...) { showPage(PAGE_RETROARCH); alert(hwnd, L"Ungültiger RetroArch-Netzwerk-Port."); return; }
+        catch (...) { showPage(PAGE_RETROARCH); alert(hwnd, tr(Str::InvalidPort)); return; }
         if (next.retroArchNetworkPort < 1 || next.retroArchNetworkPort > 65535) {
             showPage(PAGE_RETROARCH);
-            alert(hwnd, L"RetroArch-Netzwerk-Port muss zwischen 1 und 65535 liegen."); return;
+            alert(hwnd, tr(Str::PortRange)); return;
         }
         next.autostart = SendMessageW(autostart, BM_GETCHECK, 0, 0) == BST_CHECKED;
+        {
+            const int choice = int(SendMessageW(languageBox, CB_GETCURSEL, 0, 0));
+            next.language = choice == 1 ? "en" : choice == 2 ? "de" : "auto";
+        }
         bool menuReachable = false;
         for (int i = 0; i < GESTURE_COUNT; ++i) {
             int selected = int(SendMessageW(gestures[i], CB_GETCURSEL, 0, 0));
@@ -639,28 +642,28 @@ struct SettingsWindow {
         }
         if (!next.configured()) {
             showPage(PAGE_CONNECTION);
-            alert(hwnd, L"Bitte HTTP-Pi-Adresse und Token mit mindestens 24 Zeichen eingeben."); return;
+            alert(hwnd, tr(Str::NotConfigured)); return;
         }
         if (!validHotkey(next.hotkey)) {
-            showPage(PAGE_RETROARCH); alert(hwnd, L"Ungültige Tastenkombination. Beispiel: Ctrl+Shift+F1."); return;
+            showPage(PAGE_RETROARCH); alert(hwnd, tr(Str::InvalidHotkey)); return;
         }
         if (!menuReachable) {
             showPage(PAGE_GESTURES);
             if (MessageBoxW(hwnd,
-                            L"Dem Touchmenü ist keine Geste zugeordnet. Helligkeit, Status sowie Neustart "
-                            L"und Herunterfahren lassen sich am Pi dann nicht mehr aufrufen.\n\nTrotzdem speichern?",
+                            tr(Str::TouchMenuUnassigned),
                             L"Marquee-Pi", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
         }
         try {
             setAutostart(next.autostart);
             saveSettings(next);
+            setUiLanguage(resolveLanguage(next.language));
             {
                 std::lock_guard<std::mutex> guard(app->mutex);
                 app->settings = next; app->gestureDirty = true;
                 app->needsSync = app->game.has_value(); ++app->configVersion;
             }
             DestroyWindow(hwnd);
-        } catch (const std::exception& error) { alert(hwnd, errorText(error), L"Einstellungen"); }
+        } catch (const std::exception& error) { alert(hwnd, errorText(error), tr(Str::TitleSettings)); }
     }
 
     // ---- Medien -----------------------------------------------------------------
@@ -768,21 +771,22 @@ struct SettingsWindow {
             FillRect(dc, &box, gray);
             DeleteObject(gray);
             SetTextColor(dc, RGB(0xb0, 0xb0, 0xb0));
-            DrawTextW(dc, thumbnailFailed.count(entry.key) ? L"kein Vorschaubild" : L"…", -1, &box,
+            DrawTextW(dc, thumbnailFailed.count(entry.key) ? tr(Str::MediaNoPreview) : L"…", -1, &box,
                       DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
 
         const int textX = thumbX + THUMB_W + 14;
         std::wstring ext = fs::path(entry.name).extension().wstring();
         std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-        std::wstring detail = (ext == L".mp4" ? L"Video" : L"Bild") + std::wstring(L"  ·  ") + sizeText(entry.size);
+        std::wstring detail = std::wstring(ext == L".mp4" ? tr(Str::MediaVideo) : tr(Str::MediaImage)) +
+                              L"  ·  " + sizeText(entry.size);
         std::wstring roles;
         auto addRole = [&](const std::wstring& active, const wchar_t* label) {
             if (active == entry.name) roles += (roles.empty() ? L"" : L"  ·  ") + std::wstring(label);
         };
-        addRole(standardName, L"Standardmedium");
-        addRole(bootName, L"Boot-Splash");
-        addRole(shutdownName, L"Shutdown-Medium");
+        addRole(standardName, tr(Str::RoleDefault));
+        addRole(bootName, tr(Str::RoleBoot));
+        addRole(shutdownName, tr(Str::RoleShutdown));
 
         HGDIOBJ previousFont = SelectObject(dc, boldFont);
         SetTextColor(dc, GetSysColor(selected ? COLOR_HIGHLIGHTTEXT : COLOR_WINDOWTEXT));
@@ -806,10 +810,18 @@ struct SettingsWindow {
     }
     void addMedia() {
         wchar_t chosen[32768]{};
-        wchar_t filter[] = L"Unterstützte Medien\0*.jpg;*.jpeg;*.png;*.gif;*.webp;*.mp4\0Alle Dateien\0*.*\0\0";
+        std::wstring filterText = tr(Str::FilterSupported);
+        filterText.push_back(L'\0');
+        filterText += L"*.jpg;*.jpeg;*.png;*.gif;*.webp;*.mp4";
+        filterText.push_back(L'\0');
+        filterText += tr(Str::FilterAll);
+        filterText.push_back(L'\0');
+        filterText += L"*.*";
+        filterText.push_back(L'\0');
+        filterText.push_back(L'\0');
         OPENFILENAMEW dialog{};
         dialog.lStructSize = sizeof(dialog);
-        dialog.hwndOwner = hwnd; dialog.lpstrFilter = filter;
+        dialog.hwndOwner = hwnd; dialog.lpstrFilter = filterText.c_str();
         dialog.lpstrFile = chosen; dialog.nMaxFile = 32768;
         dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
         if (!GetOpenFileNameW(&dialog)) return;
@@ -839,7 +851,7 @@ struct SettingsWindow {
     }
     void activateMedia(const wchar_t* endpoint = L"/v1/default-media",
                        const wchar_t* marker = L"active-media.txt",
-                       const wchar_t* success = L"Das Standardmedium ist auf dem Pi aktiv.",
+                       const wchar_t* success = nullptr,
                        bool imageOnly = false) {
         std::wstring name = selectedName();
         if (name.empty()) return;
@@ -857,19 +869,19 @@ struct SettingsWindow {
                       L"application/octet-stream", L"X-File-Name: upload" + ext + L"\r\n");
             writeFile(dataDirectory() + L"\\" + marker, toUtf8(name));
             refreshMedia(name);
-            alert(hwnd, success);
-        } catch (const std::exception& error) { alert(hwnd, errorText(error), L"Upload fehlgeschlagen"); }
+            alert(hwnd, success ? success : tr(Str::DefaultActive));
+        } catch (const std::exception& error) { alert(hwnd, errorText(error), tr(Str::UploadFailed)); }
     }
     void removeMedia() {
         std::wstring name = selectedName();
         if (name.empty()) return;
         if (name == activeName(L"active-media.txt") || name == activeName(L"boot-media.txt") ||
             name == activeName(L"shutdown-media.txt")) {
-            alert(hwnd, L"Bitte das Medium zuerst in allen verwendeten Rollen ersetzen.");
+            alert(hwnd, tr(Str::ReplaceRolesFirst));
             return;
         }
         std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
-        if (!DeleteFileW(path.c_str())) { alert(hwnd, L"Datei konnte nicht entfernt werden."); return; }
+        if (!DeleteFileW(path.c_str())) { alert(hwnd, tr(Str::RemoveFailed)); return; }
         refreshMedia(L"\x01");  // nothing selected afterwards
     }
 };
@@ -892,11 +904,11 @@ void App::showSettings(int page) {
     RECT frame{0, 0, 705, 475};
     AdjustWindowRectEx(&frame, style, FALSE, WS_EX_DLGMODALFRAME);
     HWND window = CreateWindowExW(WS_EX_DLGMODALFRAME, L"MarqueePiSettings",
-                                 L"Marquee-Pi - Einstellungen", style,
+                                 tr(Str::WindowTitle), style,
                                  CW_USEDEFAULT, CW_USEDEFAULT, frame.right - frame.left,
                                  frame.bottom - frame.top, hwnd, nullptr,
                                  GetModuleHandleW(nullptr), state);
-    if (!window) { delete state; alert(hwnd, L"Einstellungsfenster konnte nicht geöffnet werden."); return; }
+    if (!window) { delete state; alert(hwnd, tr(Str::SettingsOpenFailed)); return; }
     settingsWindow = window;
     ShowWindow(window, SW_SHOW);
     SetForegroundWindow(window);
@@ -943,14 +955,7 @@ static LRESULT CALLBACK settingsProc(HWND hwnd, UINT message, WPARAM wp, LPARAM 
             }
             return 0;
         case S_HELP:
-            alert(hwnd,
-                  L"1. Per SSH am Raspberry Pi anmelden.\n\n"
-                  L"2. Zufälligen Token erzeugen: openssl rand -hex 32\n\n"
-                  L"3. Die 64 Zeichen in /etc/arcade-pi-display/config.json als Wert von "
-                  L"\"token\" eintragen und den Platzhalter ersetzen.\n\n"
-                  L"4. sudo systemctl restart arcade-pi-display.service\n\n"
-                  L"5. Genau denselben Token hier eintragen und speichern. Nicht veröffentlichen.",
-                  L"Zugriffstoken erstellen");
+            alert(hwnd, tr(Str::TokenHelp), tr(Str::TokenHelpTitle));
             return 0;
         case D_LIST:
             if (HIWORD(wp) == LBN_DBLCLK) state->previewMedia();
@@ -959,12 +964,10 @@ static LRESULT CALLBACK settingsProc(HWND hwnd, UINT message, WPARAM wp, LPARAM 
         case D_PREVIEW: state->previewMedia(); return 0;
         case D_ACTIVATE: state->activateMedia(); return 0;
         case D_BOOT:
-            state->activateMedia(L"/v1/boot-splash", L"boot-media.txt",
-                                 L"Der Boot-Splash ist auf dem Pi gespeichert und gilt ab dem nächsten Start.", true);
+            state->activateMedia(L"/v1/boot-splash", L"boot-media.txt", tr(Str::BootSaved), true);
             return 0;
         case D_SHUTDOWN:
-            state->activateMedia(L"/v1/shutdown-media", L"shutdown-media.txt",
-                                 L"Das Shutdown-Medium ist auf dem Pi gespeichert.");
+            state->activateMedia(L"/v1/shutdown-media", L"shutdown-media.txt", tr(Str::ShutdownSaved));
             return 0;
         case D_REMOVE: state->removeMedia(); return 0;
         case S_OPEN_INI:
@@ -1034,6 +1037,7 @@ static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR commandLine, int) {
     try {
         Settings settings = loadSettings();
+        setUiLanguage(resolveLanguage(settings.language));
         std::wstring command = commandLine ? commandLine : L"";
         if (command.find(L"--pi-shutdown") != std::wstring::npos) {
             try { piRequest(settings, L"POST", L"/v1/shutdown", {}, L"", L"", 3000); return 0; }
@@ -1044,7 +1048,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR commandLine, int) {
         App app(std::move(settings));
         currentApp = &app;
         if (!app.start(instance)) {
-            alert(nullptr, L"Marquee-Pi konnte nicht gestartet werden.");
+            alert(nullptr, tr(Str::StartFailed));
             return 1;
         }
         MSG message{};
@@ -1056,7 +1060,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR commandLine, int) {
         currentApp = nullptr;
         return int(message.wParam);
     } catch (const std::exception& error) {
-        alert(nullptr, errorText(error), L"Marquee-Pi Startfehler");
+        alert(nullptr, errorText(error), tr(Str::TitleStartupError));
         return 1;
     }
 }

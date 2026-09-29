@@ -1,6 +1,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include "core.hpp"
+#include "strings.hpp"
 #include <winhttp.h>
 #include <shlobj.h>
 #include <wincrypt.h>
@@ -381,8 +382,13 @@ Settings loadSettings() {
                 auto it = names.find(key);
                 if (it != names.end()) s.gestures[it->second] = value;
             }
-        } else if (section == "general" && key == "startwithwindows")
-            s.autostart = lower(value) == "true";
+        } else if (section == "general") {
+            if (key == "startwithwindows") s.autostart = lower(value) == "true";
+            else if (key == "language") {
+                const std::string choice = lower(value);
+                s.language = choice == "en" || choice == "de" ? choice : "auto";
+            }
+        }
     }
     return s;
 }
@@ -393,7 +399,7 @@ void saveSettings(const Settings& s) {
         if (it != s.gestures.end()) return it->second;
         return std::string(std::string(key) == "long-press" ? "touch_menu" : "none");
     };
-    std::string data = "; Marquee-Pi - use 'Einstellungen neu laden' after manual edits.\r\n"
+    std::string data = "; Marquee-Pi - use 'Reload settings' after manual edits.\r\n"
                        "[Connection]\r\nPiUrl=" + line(s.piUrl) + "\r\nToken=" + line(s.token) +
                        "\r\n\r\n[Gestures]\r\nSwipeDown=" + gesture("swipe-down") +
                        "\r\nSwipeUp=" + gesture("swipe-up") +
@@ -404,7 +410,9 @@ void saveSettings(const Settings& s) {
                        "\r\nRetroArchMenuMode=" + std::string(s.retroArchNetworkControl ? "network" : "keyboard") +
                        "\r\nRetroArchNetworkPort=" + std::to_string(s.retroArchNetworkPort) +
                        "\r\n\r\n[General]\r\nStartWithWindows=" +
-                       std::string(s.autostart ? "true" : "false") + "\r\n";
+                       std::string(s.autostart ? "true" : "false") +
+                       "\r\nLanguage=" + (s.language == "en" || s.language == "de" ? s.language : "auto") +
+                       "\r\n";
     std::wstring temp = settingsPath() + L".tmp";
     writeFile(temp, data);
     if (!MoveFileExW(temp.c_str(), settingsPath().c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
@@ -490,7 +498,7 @@ bool sendRetroArchNetworkCommand(int port) {
 HttpResult piRequest(const Settings& s, const std::wstring& method, const std::wstring& path,
                      const std::string& body, const std::wstring& contentType,
                      const std::wstring& extraHeader, int timeoutMs) {
-    if (!s.configured()) throw std::runtime_error("Pi-Adresse und Token zuerst einrichten");
+    if (!s.configured()) throw std::runtime_error("Set up the Pi address and token first");
     URL_COMPONENTS parts{};
     parts.dwStructSize = sizeof(parts);
     parts.dwHostNameLength = parts.dwUrlPathLength = DWORD(-1);
@@ -559,6 +567,11 @@ std::vector<std::string> gameWarnings(const std::string& response) {
 std::string gesturePayload(const Settings& s) {
     mini::Json body = mini::Json::object();
     for (const auto& pair : s.gestures) body[pair.first] = mini::Json::str(pair.second);
+    return body.dump();
+}
+std::string languagePayload(const Settings& s) {
+    mini::Json body = mini::Json::object();
+    body["language"] = mini::Json::str(resolveLanguage(s.language));
     return body.dump();
 }
 GameMessage parseGameMessage(const std::string& json) {
