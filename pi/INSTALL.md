@@ -46,10 +46,10 @@ The API deliberately uses plain HTTP; the header with the API token is not encry
 
 ## Installation with the Debian package
 
-The package installs everything described under "Manual installation" below in one step, including the packages from the previous section. Download `marquee-pi_<version>_all.deb` from the release page (or build it with `python3 packaging/deb/build_deb.py`), copy it to the Pi and install it with apt so that the dependencies are resolved:
+The package installs everything described under "Manual installation" below in one step, including the packages from the previous section. Download the `.deb` from the release page (or build it with `python3 packaging/deb/build_deb.py`), copy it to the Pi and install it with apt so that the dependencies are resolved. GitHub shows the tilde of a pre-release version in the file name as a dot (`marquee-pi_1.0.0.beta.1_all.deb` instead of `marquee-pi_1.0.0~beta.1_all.deb`), so use a wildcard instead of typing the name:
 
 ```sh
-sudo apt install ./marquee-pi_1.0.0~beta.1_all.deb
+sudo apt install ./marquee-pi_*_all.deb
 ```
 
 The package creates the service user `marqueepi`, installs the program to `/opt/marquee-pi`, the systemd services, the Polkit rule, the Chromium policy and the Xorg configuration, generates `/etc/marquee-pi/config.json` with a random API token (never overwritten on upgrades) and starts the services. The kiosk logs in as user `pi`; if there is no such user, the first regular user is used and the installer prints the drop-in it wrote.
