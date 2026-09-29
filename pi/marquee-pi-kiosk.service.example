@@ -1,7 +1,7 @@
 [Unit]
 Description=Marquee-Pi kiosk
-After=arcade-pi-display.service
-Requires=arcade-pi-display.service
+After=marquee-pi-api.service
+Requires=marquee-pi-api.service
 
 [Service]
 Type=simple
@@ -12,7 +12,7 @@ Environment=HOME=/home/REPLACE_WITH_PI_USER
 PAMName=login
 TTYPath=/dev/tty7
 StandardInput=tty
-ExecStart=/usr/bin/xinit /opt/arcade-pi-display/start-kiosk.sh -- /usr/bin/Xorg :0 vt7 -nolisten tcp -nocursor
+ExecStart=/usr/bin/xinit /opt/marquee-pi/start-kiosk.sh -- /usr/bin/Xorg :0 vt7 -nolisten tcp -nocursor
 Restart=on-failure
 RestartSec=3
 

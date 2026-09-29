@@ -472,7 +472,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.client_address[0] in ("127.0.0.1", "::1")
 
     def _authorized(self) -> bool:
-        provided = self.headers.get("X-Arcade-Token", "")
+        provided = self.headers.get("X-Marquee-Token", "")
         allowed = self.server.allowed_clients
         ok = ((not allowed or self.client_address[0] in allowed) and bool(provided) and
               hmac.compare_digest(provided.encode("utf-8"), self.server.token.encode("utf-8")))

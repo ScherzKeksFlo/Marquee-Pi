@@ -4,13 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=arcadepi
-ExecStart=/usr/bin/python3 /opt/arcade-pi-display/arcade_pi.py --config /etc/arcade-pi-display/config.json
+User=marqueepi
+ExecStart=/usr/bin/python3 /opt/marquee-pi/marquee_pi.py --config /etc/marquee-pi/config.json
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/arcade-pi-display -/sys/devices/platform/rpi_backlight
+ReadWritePaths=/var/lib/marquee-pi -/sys/devices/platform/rpi_backlight
 SupplementaryGroups=video
 PrivateTmp=true
 

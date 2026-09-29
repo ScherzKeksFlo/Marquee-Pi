@@ -22,7 +22,7 @@ status() {
     printf "Firmware power: "
     vcgencmd display_power 2>/dev/null || echo "unavailable"
     printf "Services: "
-    systemctl is-active arcade-pi-display arcade-pi-kiosk 2>/dev/null | paste -sd ' ' -
+    systemctl is-active marquee-pi-api marquee-pi-kiosk 2>/dev/null | paste -sd ' ' -
     echo "DRM connectors:"
     find /sys/class/drm -maxdepth 1 -name 'card*-*' -printf '  %f' -exec sh -c 'test -r "$1/status" && printf " (%s)" "$(cat "$1/status")"; echo' sh {} \;
     echo "Input devices:"
@@ -72,7 +72,7 @@ reset_display() {
         sleep 1
         xrun xrandr --output "$DISPLAY_NAME" --auto --primary || true
     fi
-    systemctl restart arcade-pi-kiosk
+    systemctl restart marquee-pi-kiosk
     echo "Display output and kiosk restarted."
     status
 }

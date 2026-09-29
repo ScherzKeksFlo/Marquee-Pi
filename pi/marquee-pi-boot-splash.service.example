@@ -1,13 +1,13 @@
 [Unit]
 Description=Marquee-Pi boot splash
 After=local-fs.target
-Before=arcade-pi-kiosk.service
-ConditionPathExists=/var/lib/arcade-pi-display/boot-splash
+Before=marquee-pi-kiosk.service
+ConditionPathExists=/var/lib/marquee-pi/boot-splash
 ConditionPathExists=/dev/fb0
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/fbi -T 1 -d /dev/fb0 -a -noverbose -nointeractive /var/lib/arcade-pi-display/boot-splash
+ExecStart=/usr/bin/fbi -T 1 -d /dev/fb0 -a -noverbose -nointeractive /var/lib/marquee-pi/boot-splash
 StandardInput=tty
 StandardOutput=journal
 StandardError=journal

@@ -13,7 +13,7 @@ namespace MarqueePiLaunchBox
 {
     public sealed class GameEventsPlugin : IGameLaunchingPlugin
     {
-        private const string PipeName = "ArcadePiDisplayGameEvents";
+        private const string PipeName = "MarqueePiGameEvents";
 
         public void OnBeforeGameLaunching(IGame? game, IAdditionalApplication? app, IEmulator? emulator)
         {

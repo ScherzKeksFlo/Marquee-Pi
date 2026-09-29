@@ -9,7 +9,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from arcade_pi import DisplayState, Handler, Server, process_identity
+from marquee_pi import DisplayState, Handler, Server, process_identity
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lZkAAAAASUVORK5CYII="
@@ -20,9 +20,9 @@ MP4 = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 24
 class StateTests(unittest.TestCase):
     def test_process_identity_includes_start_time_and_uid(self):
         fake_stat = "123 (marquee pi) S " + " ".join(str(index) for index in range(4, 40))
-        with patch("arcade_pi.Path.read_text", return_value=fake_stat), \
-             patch("arcade_pi.os.getpid", return_value=123), \
-             patch("arcade_pi.os.getuid", return_value=1000, create=True):
+        with patch("marquee_pi.Path.read_text", return_value=fake_stat), \
+             patch("marquee_pi.os.getpid", return_value=123), \
+             patch("marquee_pi.os.getuid", return_value=1000, create=True):
             self.assertEqual(process_identity(), "123,22,1000")
         self.assertEqual(Handler.timeout, 15)
 
@@ -45,7 +45,7 @@ class StateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             data_dir = Path(directory)
             state = DisplayState(data_dir, 60)
-            with patch("arcade_pi.verify_mp4", return_value=8.5) as verify:
+            with patch("marquee_pi.verify_mp4", return_value=8.5) as verify:
                 name = state.save_shutdown(MP4, ".mp4")
             verify.assert_called_once()
             manifest_path = data_dir / "shutdown.json"
@@ -80,7 +80,7 @@ class StateTests(unittest.TestCase):
                 if path == data_dir / first:
                     raise OSError("simulated delete error")
 
-            with patch("arcade_pi.unlink_if_exists", side_effect=fail_only_for_previous):
+            with patch("marquee_pi.unlink_if_exists", side_effect=fail_only_for_previous):
                 replacement = state.save_shutdown(PNG, ".png")
             self.assertNotEqual(replacement, first)
             self.assertEqual(state.shutdown_file.name, replacement)
@@ -172,13 +172,13 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual(result.exception.code, 401)
 
                 connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=3)
-                connection.request("GET", "/v1/status", headers={"X-Arcade-Token": "é"})
+                connection.request("GET", "/v1/status", headers={"X-Marquee-Token": "é"})
                 self.assertEqual(connection.getresponse().status, 401)
                 connection.close()
 
                 upload = Request(
                     base + "/v1/default-media", data=PNG, method="POST",
-                    headers={"X-Arcade-Token": "a" * 32, "X-File-Name": "upload.png"},
+                    headers={"X-Marquee-Token": "a" * 32, "X-File-Name": "upload.png"},
                 )
                 with urlopen(upload, timeout=3) as response:
                     uploaded = json.load(response)
@@ -186,13 +186,13 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual(state.describe()["default_name"], uploaded["name"])
                 boot_upload = Request(
                     base + "/v1/boot-splash", data=PNG, method="POST",
-                    headers={"X-Arcade-Token": "a" * 32, "X-File-Name": "boot.png"},
+                    headers={"X-Marquee-Token": "a" * 32, "X-File-Name": "boot.png"},
                 )
                 with urlopen(boot_upload, timeout=3) as response:
                     self.assertEqual(response.status, 200)
                 shutdown_upload = Request(
                     base + "/v1/shutdown-media", data=PNG, method="POST",
-                    headers={"X-Arcade-Token": "a" * 32, "X-File-Name": "shutdown.png"},
+                    headers={"X-Marquee-Token": "a" * 32, "X-File-Name": "shutdown.png"},
                 )
                 with urlopen(shutdown_upload, timeout=3) as response:
                     self.assertEqual(response.status, 200)
@@ -205,7 +205,7 @@ class ApiTests(unittest.TestCase):
                 }).encode()
                 request = Request(
                     base + "/v1/game", data=payload, method="POST",
-                    headers={"X-Arcade-Token": "a" * 32, "Content-Type": "application/json"},
+                    headers={"X-Marquee-Token": "a" * 32, "Content-Type": "application/json"},
                 )
                 with urlopen(request, timeout=3) as response:
                     self.assertEqual(response.status, 200)
@@ -219,7 +219,7 @@ class ApiTests(unittest.TestCase):
                 }).encode()
                 partial_request = Request(
                     base + "/v1/game", data=partial_payload, method="POST",
-                    headers={"X-Arcade-Token": "a" * 32, "Content-Type": "application/json"},
+                    headers={"X-Marquee-Token": "a" * 32, "Content-Type": "application/json"},
                 )
                 with urlopen(partial_request, timeout=3) as response:
                     partial_result = json.load(response)
@@ -228,7 +228,7 @@ class ApiTests(unittest.TestCase):
                 self.assertTrue(state.describe()["has_logo"])
                 request = Request(
                     base + "/v1/game", data=payload, method="POST",
-                    headers={"X-Arcade-Token": "a" * 32, "Content-Type": "application/json"},
+                    headers={"X-Marquee-Token": "a" * 32, "Content-Type": "application/json"},
                 )
                 with urlopen(request, timeout=3):
                     pass
@@ -237,7 +237,7 @@ class ApiTests(unittest.TestCase):
                     data=json.dumps({"swipe-down": "retroarch_menu",
                                      "swipe-right": "box_art"}).encode(),
                     method="POST",
-                    headers={"X-Arcade-Token": "a" * 32,
+                    headers={"X-Marquee-Token": "a" * 32,
                              "Content-Type": "application/json"},
                 )
                 with urlopen(gestures, timeout=3) as response:
@@ -252,24 +252,24 @@ class ApiTests(unittest.TestCase):
                     self.assertTrue(json.load(response)["queued"])
                 event_request = Request(
                     base + "/v1/gesture-events?unused=yes&after=0",
-                    headers={"X-Arcade-Token": "a" * 32},
+                    headers={"X-Marquee-Token": "a" * 32},
                 )
                 with urlopen(event_request, timeout=3) as response:
                     events = json.load(response)
                 self.assertEqual(events["events"],
                                  [{"id": 1, "action": "retroarch_menu"}])
                 power = Request(base + "/v1/shutdown", data=b"", method="POST",
-                                headers={"X-Arcade-Token": "a" * 32})
+                                headers={"X-Marquee-Token": "a" * 32})
                 with self.assertRaises(HTTPError) as result:
                     urlopen(power, timeout=3)
                 self.assertEqual(result.exception.code, 503)
-                request = Request(base + "/v1/status", headers={"X-Arcade-Token": "a" * 32})
+                request = Request(base + "/v1/status", headers={"X-Marquee-Token": "a" * 32})
                 with urlopen(request, timeout=3) as response:
                     status = json.load(response)
                 self.assertEqual(status["game_title"], "Test Game")
                 self.assertTrue(status["has_marquee"])
 
-                with patch("arcade_pi.verify_mp4", return_value=8.5):
+                with patch("marquee_pi.verify_mp4", return_value=8.5):
                     state.save_default(MP4, ".mp4")
                 ranged = Request(base + "/ui/default?v=2", headers={"Range": "bytes=4-11"})
                 with urlopen(ranged, timeout=3) as response:
@@ -281,7 +281,7 @@ class ApiTests(unittest.TestCase):
 
                 request = Request(
                     base + "/v1/default", data=b"", method="POST",
-                    headers={"X-Arcade-Token": "a" * 32},
+                    headers={"X-Marquee-Token": "a" * 32},
                 )
                 with urlopen(request, timeout=3):
                     pass
@@ -381,14 +381,14 @@ class MenuApiTests(unittest.TestCase):
         return urlopen(request, timeout=3)
 
     def test_system_status_reports_connection_and_brightness(self):
-        with patch("arcade_pi.local_addresses", return_value=["192.168.99.149"]):
+        with patch("marquee_pi.local_addresses", return_value=["192.168.99.149"]):
             with urlopen(self.base + "/ui/system", timeout=3) as response:
                 info = json.load(response)
             self.assertFalse(info["client_connected"])
             self.assertEqual(info["addresses"], ["192.168.99.149"])
             self.assertEqual(info["brightness"], {"supported": True, "percent": 100})
             self.assertTrue(info["power_enabled"])
-            urlopen(Request(self.base + "/v1/status", headers={"X-Arcade-Token": "a" * 32}),
+            urlopen(Request(self.base + "/v1/status", headers={"X-Marquee-Token": "a" * 32}),
                     timeout=3).close()
             with urlopen(self.base + "/ui/system", timeout=3) as response:
                 self.assertTrue(json.load(response)["client_connected"])
@@ -396,7 +396,7 @@ class MenuApiTests(unittest.TestCase):
     def test_language_endpoint_requires_token_and_valid_value(self):
         def post(payload, token="a" * 32):
             request = Request(self.base + "/v1/language", data=json.dumps(payload).encode(), method="POST",
-                              headers={"X-Arcade-Token": token})
+                              headers={"X-Marquee-Token": token})
             return urlopen(request, timeout=3)
         with self.assertRaises(HTTPError) as result:
             post({"language": "de"}, token="wrong")
@@ -413,7 +413,7 @@ class MenuApiTests(unittest.TestCase):
 
     def test_unauthorized_request_does_not_count_as_client_contact(self):
         with self.assertRaises(HTTPError):
-            urlopen(Request(self.base + "/v1/status", headers={"X-Arcade-Token": "wrong"}), timeout=3)
+            urlopen(Request(self.base + "/v1/status", headers={"X-Marquee-Token": "wrong"}), timeout=3)
         self.assertFalse(self.state.client_connected())
 
     def test_brightness_endpoint_validates_input(self):
@@ -429,8 +429,8 @@ class MenuApiTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as result:
             self.post("/ui/power", {"action": "halt"})
         self.assertEqual(result.exception.code, 400)
-        with patch("arcade_pi.process_identity", return_value="1,2,3"), \
-             patch("arcade_pi.subprocess.run") as run:
+        with patch("marquee_pi.process_identity", return_value="1,2,3"), \
+             patch("marquee_pi.subprocess.run") as run:
             run.return_value.returncode = 1
             with self.assertRaises(HTTPError) as result:
                 self.post("/ui/power", {"action": "reboot"})
@@ -439,9 +439,9 @@ class MenuApiTests(unittest.TestCase):
 
     def test_menu_reboot_and_poweroff_use_systemctl(self):
         for action, expected_delay in (("reboot", 0.5), ("poweroff", self.state.shutdown_delay())):
-            with patch("arcade_pi.process_identity", return_value="1,2,3"), \
-                 patch("arcade_pi.subprocess.run") as run, \
-                 patch("arcade_pi.threading.Timer") as timer:
+            with patch("marquee_pi.process_identity", return_value="1,2,3"), \
+                 patch("marquee_pi.subprocess.run") as run, \
+                 patch("marquee_pi.threading.Timer") as timer:
                 run.return_value.returncode = 0
                 with self.post("/ui/power", {"action": action}) as response:
                     self.assertEqual(response.status, 200)
@@ -452,8 +452,8 @@ class MenuApiTests(unittest.TestCase):
         self.assertTrue(self.state.describe()["shutting_down"])
 
     def test_menu_power_reports_missing_pkcheck_as_unavailable(self):
-        with patch("arcade_pi.process_identity", return_value="1,2,3"), \
-             patch("arcade_pi.subprocess.run", side_effect=FileNotFoundError):
+        with patch("marquee_pi.process_identity", return_value="1,2,3"), \
+             patch("marquee_pi.subprocess.run", side_effect=FileNotFoundError):
             with self.assertRaises(HTTPError) as result:
                 self.post("/ui/power", {"action": "poweroff"})
         self.assertEqual(result.exception.code, 503)

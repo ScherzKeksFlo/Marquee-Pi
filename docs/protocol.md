@@ -1,6 +1,6 @@
 # Network protocol v1
 
-The Pi provides an HTTP API on the configured port. Windows sends the `X-Arcade-Token` header with every `/v1` call. HTTP encrypts neither media nor the token; a device on the same network could read the token. The API is therefore intended exclusively for a direct point-to-point connection or a trusted local network and must not be forwarded to the internet.
+The Pi provides an HTTP API on the configured port. Windows sends the `X-Marquee-Token` header with every `/v1` call. HTTP encrypts neither media nor the token; a device on the same network could read the token. The API is therefore intended exclusively for a direct point-to-point connection or a trusted local network and must not be forwarded to the internet.
 
 `allowed_client_ips` restricts the permitted Windows addresses; an empty list means no IP filtering. A list containing the fixed IP of the arcade PC is recommended. Alternatively or additionally, `bind` is set to the Pi IP of the direct Ethernet interface so that the service does not listen on Wi-Fi or other networks. Independently of this, the full-screen page at `/ui/` is reachable only from `127.0.0.1` or `::1`.
 
@@ -24,7 +24,7 @@ The Pi provides an HTTP API on the configured port. Windows sends the `X-Arcade-
 
 `POST /v1/game` uses JSON. `title` is required. `marquee`, `controls`, `box_art` and `logo` are optional and each contain `extension` and `base64`. File paths are not transmitted because Windows paths are not available on the Pi. Images are held in RAM for the running session. PNG and JPEG files are scaled down proportionally on Windows to a maximum edge length of 1600 pixels before transmission. GIF and WebP are transmitted unchanged so that animations are preserved. If no heartbeat arrives for 60 seconds, the Pi returns to the local default media. The timeout is configurable.
 
-The maximum HTTP request size is 32 MiB. The Windows sender reserves 1 MiB of this for JSON, title and Base64 rounding. The shared raw data budget for all four artworks is therefore `(32 MiB - 1 MiB) * 3 / 4 = 23.25 MiB`. Changes to this protocol limit must be made in `pi/arcade_pi.py` and `windows/native/core.hpp` together.
+The maximum HTTP request size is 32 MiB. The Windows sender reserves 1 MiB of this for JSON, title and Base64 rounding. The shared raw data budget for all four artworks is therefore `(32 MiB - 1 MiB) * 3 / 4 = 23.25 MiB`. Changes to this protocol limit must be made in `pi/marquee_pi.py` and `windows/native/core.hpp` together.
 
 `POST /v1/gesture-config` uses a JSON object with the gesture keys `swipe-down`, `swipe-up`, `swipe-right`, `swipe-left` and `long-press`. Valid actions are `none`, `marquee`, `box_art`, `logo`, `controls`, `default`, `retroarch_menu` and `touch_menu`. Missing swipe keys are treated as `none`, a missing `long-press` as `touch_menu` so that clients that only know the swipes keep the menu; invalid keys or values are rejected. The assignment is stored permanently on the Pi. The local page reports only RetroArch gestures via `POST /ui/gesture`; image changes and the touch menu are handled directly in the browser. Windows polls `/v1/gesture-events?after=N` with authentication and receives `instance_id` and a list of IDs. When the Pi restarts, `instance_id` changes so that Windows resets its cursor.
 

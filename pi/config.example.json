@@ -3,7 +3,7 @@
   "port": 8765,
   "allowed_client_ips": [],
   "power_commands_enabled": false,
-  "data_dir": "/var/lib/arcade-pi-display",
+  "data_dir": "/var/lib/marquee-pi",
   "game_timeout_seconds": 60,
   "token": "CHANGE_ME_TO_A_RANDOM_TOKEN_AT_LEAST_24_CHARACTERS"
 }

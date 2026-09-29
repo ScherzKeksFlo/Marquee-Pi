@@ -99,9 +99,7 @@ std::wstring modulePath() {
     return path;
 }
 std::wstring startupLink() { return folder(FOLDERID_Startup) + L"\\Marquee-Pi.lnk"; }
-std::wstring oldStartupLink() { return folder(FOLDERID_Startup) + L"\\ArcadePiDisplay.lnk"; }
 bool portableMode() { return fileExists((fs::path(modulePath()).parent_path() / L"portable.flag").wstring()); }
-std::wstring oldDataDirectory() { return folder(FOLDERID_LocalAppData) + L"\\ArcadePiDisplay"; }
 std::vector<BYTE> hotkeyKeys(const std::wstring& text) {
     std::vector<std::wstring> parts;
     size_t start = 0;
@@ -270,11 +268,10 @@ bool autostartEnabled() {
     bool registry = false;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",
                       0, KEY_QUERY_VALUE, &key) == ERROR_SUCCESS) {
-        registry = RegQueryValueExW(key, L"MarqueePi", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS ||
-                   RegQueryValueExW(key, L"ArcadePiDisplay", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
+        registry = RegQueryValueExW(key, L"MarqueePi", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
         RegCloseKey(key);
     }
-    return registry || fileExists(startupLink()) || fileExists(oldStartupLink());
+    return registry || fileExists(startupLink());
 }
 void setAutostart(bool enabled) {
     HKEY key = nullptr;
@@ -295,10 +292,8 @@ void setAutostart(bool enabled) {
             throw std::runtime_error("Autostart registry write failed");
         }
     } else RegDeleteValueW(key, L"MarqueePi");
-    RegDeleteValueW(key, L"ArcadePiDisplay");
     RegCloseKey(key);
     DeleteFileW(startupLink().c_str());
-    DeleteFileW(oldStartupLink().c_str());
 }bool Settings::configured() const {
     if (token.size() < 24 || piUrl.rfind(L"http://", 0) != 0) return false;
     URL_COMPONENTS parts{};
@@ -310,44 +305,8 @@ void setAutostart(bool enabled) {
 Settings loadSettings() {
     Settings s;
     std::wstring ini = settingsPath();
-    if (!fileExists(ini) && !portableMode()) {
-        std::wstring old = oldDataDirectory();
-        if (fileExists(old + L"\\settings.ini")) {
-            fs::create_directories(fs::path(dataDirectory()));
-            CopyFileW((old + L"\\settings.ini").c_str(), ini.c_str(), TRUE);
-            if (fileExists(old + L"\\active-media.txt"))
-                CopyFileW((old + L"\\active-media.txt").c_str(),
-                          (dataDirectory() + L"\\active-media.txt").c_str(), TRUE);
-            if (fs::exists(fs::path(old + L"\\media"))) {
-                // Migrate contents individually; copy() rejects an existing destination directory.
-                try {
-                    const fs::path source(old + L"\\media");
-                    const fs::path target(mediaDirectory());
-                    fs::create_directories(target);
-                    for (const auto& entry : fs::recursive_directory_iterator(source)) {
-                        const fs::path dest = target / fs::relative(entry.path(), source);
-                        if (entry.is_directory()) fs::create_directories(dest);
-                        else if (entry.is_regular_file()) {
-                            fs::create_directories(dest.parent_path());
-                            fs::copy_file(entry.path(), dest, fs::copy_options::skip_existing);
-                        }
-                    }
-                } catch (const fs::filesystem_error&) {
-                    // A locked media file must not prevent the tray from starting.
-                }
-            }
-        }
-    }
     if (!fileExists(ini)) {
         if (!portableMode()) {
-            try {
-                mini::Json old = mini::parse(readFile(oldDataDirectory() + L"\\settings.json"));
-                s.piUrl = fromUtf8(old.get("PiUrl").value());
-                s.token = fromUtf8(old.get("Token").value());
-                s.hotkey = fromUtf8(old.get("RetroArchMenuHotkey").value("F1"));
-                for (const auto& pair : old.get("GestureActions").members)
-                    s.gestures[pair.first] = pair.second.value();
-            } catch (...) {}
             s.autostart = autostartEnabled();
         }
         saveSettings(s);
@@ -514,7 +473,7 @@ HttpResult piRequest(const Settings& s, const std::wstring& method, const std::w
                                           WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
     if (!request) throw std::runtime_error("Pi request failed");
     WinHttpSetTimeouts(request, 3000, 3000, timeoutMs, timeoutMs);
-    std::wstring headers = L"X-Arcade-Token: " + s.token + L"\r\n" + extraHeader;
+    std::wstring headers = L"X-Marquee-Token: " + s.token + L"\r\n" + extraHeader;
     if (!contentType.empty()) headers += L"Content-Type: " + contentType + L"\r\n";
     if (!WinHttpSendRequest(request, headers.c_str(), DWORD(-1),
                             body.empty() ? nullptr : (void*)body.data(), DWORD(body.size()),

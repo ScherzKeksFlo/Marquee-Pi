@@ -23,7 +23,7 @@ constexpr UINT WM_STATUS = WM_APP + 2;
 constexpr UINT WM_GAME = WM_APP + 3;
 constexpr UINT WM_APP_HOTKEY = WM_APP + 4;
 constexpr UINT WM_ERROR = WM_APP + 5;
-constexpr wchar_t PIPE_NAME[] = L"\\\\.\\pipe\\ArcadePiDisplayGameEvents";
+constexpr wchar_t PIPE_NAME[] = L"\\\\.\\pipe\\MarqueePiGameEvents";
 constexpr int ICON_CONNECTED = 101, ICON_DISCONNECTED = 102;
 enum MenuId {
     M_MEDIA = 1001, M_DEFAULT, M_RELOAD, M_REBOOT, M_SHUTDOWN,

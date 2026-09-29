@@ -1,12 +1,12 @@
 [Unit]
 Description=Marquee-Pi shutdown animation
-After=arcade-pi-display.service arcade-pi-kiosk.service
+After=marquee-pi-api.service marquee-pi-kiosk.service
 
 [Service]
 Type=oneshot
 ExecStart=/bin/true
 RemainAfterExit=yes
-ExecStop=/opt/arcade-pi-display/show-shutdown.sh
+ExecStop=/opt/marquee-pi/show-shutdown.sh
 TimeoutStopSec=35
 
 [Install]

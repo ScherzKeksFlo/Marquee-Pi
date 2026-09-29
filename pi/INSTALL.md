@@ -29,7 +29,7 @@ sudo apt clean
 - `polkitd`: tightly limited permission for Pi restart and shutdown.
 - `openssl`: generate a random API token.
 
-If Xorg does not start under the kiosk user, first check `journalctl -u arcade-pi-kiosk -b`. On some installations, `xserver-xorg-legacy` is additionally required; install and configure it only after a corresponding error.
+If Xorg does not start under the kiosk user, first check `journalctl -u marquee-pi-kiosk -b`. On some installations, `xserver-xorg-legacy` is additionally required; install and configure it only after a corresponding error.
 
 ## Network
 
@@ -50,47 +50,47 @@ Run the following commands in the `pi` folder of a local copy of this repository
 
 ```sh
 PI_USER=pi
-sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin arcadepi
-sudo install -d -o root -g root -m 755 /opt/arcade-pi-display
-sudo cp -a arcade_pi.py start-kiosk.sh show-shutdown.sh static /opt/arcade-pi-display/
-sudo chmod 755 /opt/arcade-pi-display/start-kiosk.sh /opt/arcade-pi-display/show-shutdown.sh
+sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin marqueepi
+sudo install -d -o root -g root -m 755 /opt/marquee-pi
+sudo cp -a marquee_pi.py start-kiosk.sh show-shutdown.sh static /opt/marquee-pi/
+sudo chmod 755 /opt/marquee-pi/start-kiosk.sh /opt/marquee-pi/show-shutdown.sh
 sudo install -o root -g root -m 755 configure-quiet-boot.sh /usr/local/sbin/marquee-pi-configure-quiet-boot
 sudo install -d -m 755 /etc/X11/xorg.conf.d /etc/chromium/policies/managed
 sudo install -m 644 xorg-modesetting.example.conf /etc/X11/xorg.conf.d/20-arcade-modesetting.conf
-sudo install -m 644 chromium-policy.example.json /etc/chromium/policies/managed/arcade-pi-display.json
-sudo install -d -o arcadepi -g arcadepi -m 750 /var/lib/arcade-pi-display
-sudo install -d -o root -g arcadepi -m 750 /etc/arcade-pi-display
-sudo install -o root -g arcadepi -m 640 config.example.json /etc/arcade-pi-display/config.json
+sudo install -m 644 chromium-policy.example.json /etc/chromium/policies/managed/marquee-pi.json
+sudo install -d -o marqueepi -g marqueepi -m 750 /var/lib/marquee-pi
+sudo install -d -o root -g marqueepi -m 750 /etc/marquee-pi
+sudo install -o root -g marqueepi -m 640 config.example.json /etc/marquee-pi/config.json
 openssl rand -hex 32
 ```
 
-Enter the printed token in `/etc/arcade-pi-display/config.json` (`sudo nano ...`). Set `allowed_client_ips` to the Windows IP, for example `["10.0.0.1"]`; leave `power_commands_enabled` at `false` for now. Token, personal media and local configuration do not belong in the Git repository.
+Enter the printed token in `/etc/marquee-pi/config.json` (`sudo nano ...`). Set `allowed_client_ips` to the Windows IP, for example `["10.0.0.1"]`; leave `power_commands_enabled` at `false` for now. Token, personal media and local configuration do not belong in the Git repository.
 
 ```sh
-sudo install -o root -g root -m 644 arcade-pi-display.service.example /etc/systemd/system/arcade-pi-display.service
-sed "s/REPLACE_WITH_PI_USER/$PI_USER/g" arcade-pi-kiosk.service.example | sudo tee /etc/systemd/system/arcade-pi-kiosk.service >/dev/null
-sudo chmod 644 /etc/systemd/system/arcade-pi-kiosk.service
+sudo install -o root -g root -m 644 marquee-pi-api.service.example /etc/systemd/system/marquee-pi-api.service
+sed "s/REPLACE_WITH_PI_USER/$PI_USER/g" marquee-pi-kiosk.service.example | sudo tee /etc/systemd/system/marquee-pi-kiosk.service >/dev/null
+sudo chmod 644 /etc/systemd/system/marquee-pi-kiosk.service
 sudo install -o root -g root -m 644 marquee-pi-boot-splash.service.example /etc/systemd/system/marquee-pi-boot-splash.service
 sudo install -o root -g root -m 644 marquee-pi-shutdown-animation.service.example /etc/systemd/system/marquee-pi-shutdown-animation.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now arcade-pi-display.service arcade-pi-kiosk.service marquee-pi-shutdown-animation.service
+sudo systemctl enable --now marquee-pi-api.service marquee-pi-kiosk.service marquee-pi-shutdown-animation.service
 sudo systemctl enable marquee-pi-boot-splash.service
 ```
 
 The kiosk template also starts on the Lite edition (`multi-user.target`). `start-kiosk.sh` sets the X11 screen saver to timeout 0, disables DPMS and uses software rendering to relieve the GPU of the Pi 3 B+. The Xorg configuration selects only the `modesetting` driver for DSI and prevents a second `fbdev` screen. The Chromium policy disables the translation bar. Verify with:
 
 ```sh
-systemctl is-active arcade-pi-display arcade-pi-kiosk
+systemctl is-active marquee-pi-api marquee-pi-kiosk
 sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xset q
 sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr --current
 ```
 
 ## Boot splash and quiet system startup
 
-The Windows tool later uploads the boot splash via **Manage media… > Use as boot splash**. It must be a PNG or JPEG and is stored as `/var/lib/arcade-pi-display/boot-splash`. Until a custom image has been chosen, a PNG can be copied manually to this location, for example:
+The Windows tool later uploads the boot splash via **Manage media… > Use as boot splash**. It must be a PNG or JPEG and is stored as `/var/lib/marquee-pi/boot-splash`. Until a custom image has been chosen, a PNG can be copied manually to this location, for example:
 
 ```sh
-sudo install -o arcadepi -g arcadepi -m 640 boot.png /var/lib/arcade-pi-display/boot-splash
+sudo install -o marqueepi -g marqueepi -m 640 boot.png /var/lib/marquee-pi/boot-splash
 ```
 
 Then hide the normal console text. The script saves the original kernel command line once as `/boot/firmware/cmdline.txt.marquee-pi-before-quiet-boot`, checks the required `root=` entry before the atomic replacement, adds the quiet startup options and disables the normal getty on tty1. `console=tty1` is deliberately retained so that kernel, boot and file system errors remain visible; after a normal start, no login prompt appears there because the getty is disabled:
@@ -183,15 +183,15 @@ Upload the file `output.mp4` as default media via the Windows tool. Keep the ori
 
 ## Restart and shutdown via the Windows tool
 
-Trixie uses JavaScript rules under `/etc/polkit-1/rules.d`; the old Buster file `arcade-pi-display.pkla.example` does not apply here. The template permits only the service user `arcadepi` the four required login1 actions.
+Trixie uses JavaScript rules under `/etc/polkit-1/rules.d`; the old Buster file `marquee-pi.pkla.example` does not apply here. The template permits only the service user `marqueepi` the four required login1 actions.
 
 ```sh
-sudo install -o root -g root -m 644 arcade-pi-display.rules.example /etc/polkit-1/rules.d/50-arcade-pi-display.rules
-PID=$(systemctl show -p MainPID --value arcade-pi-display)
+sudo install -o root -g root -m 644 marquee-pi.rules.example /etc/polkit-1/rules.d/50-marquee-pi.rules
+PID=$(systemctl show -p MainPID --value marquee-pi-api)
 START_TIME=$(python3 -c 'import sys; print(open(sys.argv[1]).read().rsplit(")", 1)[1].split()[19])' "/proc/$PID/stat")
-PROCESS="$PID,$START_TIME,$(id -u arcadepi)"
-sudo -u arcadepi pkcheck --action-id org.freedesktop.login1.reboot --process "$PROCESS"
-sudo -u arcadepi pkcheck --action-id org.freedesktop.login1.power-off --process "$PROCESS"
+PROCESS="$PID,$START_TIME,$(id -u marqueepi)"
+sudo -u marqueepi pkcheck --action-id org.freedesktop.login1.reboot --process "$PROCESS"
+sudo -u marqueepi pkcheck --action-id org.freedesktop.login1.power-off --process "$PROCESS"
 ```
 
 The check must be performed for the service user; both `pkcheck` calls must succeed. Only then set `power_commands_enabled` in `config.json` to `true` and restart the API service. Test the API restart first. The shutdown test comes last because the Pi only starts again afterwards through a new power cycle. `NoNewPrivileges=true` in the service file remains active.
@@ -205,4 +205,4 @@ The check must be performed for the service user; both `pkcheck` calls must succ
 5. Exit the game: the default media appears. Test a Pi restart via the tray menu; the media appears again after booting.
 6. Upload a shutdown media file. Perform the Pi shutdown via the tray menu only after all other tests: the media appears in full or for at most 30 seconds, after which the Pi is no longer reachable via ping/SSH.
 
-In case of errors, read `journalctl -u arcade-pi-display -u arcade-pi-kiosk -b --no-pager`. For a community installation, adapt your own IP addresses, display orientation, user name and default media.
+In case of errors, read `journalctl -u marquee-pi-api -u marquee-pi-kiosk -b --no-pager`. For a community installation, adapt your own IP addresses, display orientation, user name and default media.

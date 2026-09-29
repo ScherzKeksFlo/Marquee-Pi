@@ -22,16 +22,16 @@ An overlay menu directly on the display, opened by default with a long press (ap
 
 1. Copy `config.example.json` to `config.json` and set a random token of at least 24 characters. Do not add this file to Git.
 2. Set `data_dir` to a permanently writable path and assign the folder to the Pi service user.
-3. Start `python3 arcade_pi.py --config config.json`.
+3. Start `python3 marquee_pi.py --config config.json`.
 4. Open `http://127.0.0.1:8765/ui/` in the browser. `start-kiosk.sh` starts Chromium in full-screen mode.
 
-`arcade-pi-display.service.example`, `arcade-pi-kiosk.service.example`, `marquee-pi-boot-splash.service.example` and `marquee-pi-shutdown-animation.service.example` are templates for system startup. User name and paths must match the Pi installation. The kiosk service starts Xorg on `tty7` and Chromium without a desktop session. `start-kiosk.sh` disables the screen saver and DPMS at X11 startup. The boot service shows the uploaded PNG/JPEG on `tty1`; the shutdown service shows the stored media while the API and kiosk are still running. The current Trixie installation uses the Chromium policy under `/etc/chromium/policies/managed/`.
+`marquee-pi-api.service.example`, `marquee-pi-kiosk.service.example`, `marquee-pi-boot-splash.service.example` and `marquee-pi-shutdown-animation.service.example` are templates for system startup. User name and paths must match the Pi installation. The kiosk service starts Xorg on `tty7` and Chromium without a desktop session. `start-kiosk.sh` disables the screen saver and DPMS at X11 startup. The boot service shows the uploaded PNG/JPEG on `tty1`; the shutdown service shows the stored media while the API and kiosk are still running. The current Trixie installation uses the Chromium policy under `/etc/chromium/policies/managed/`.
 
 ## Restart and shutdown
 
-The API commands are disabled by default and respond with HTTP 503. On Trixie, they run via `systemctl` and a Polkit rule for the dedicated service user `arcadepi`; `NoNewPrivileges=true` remains active.
+The API commands are disabled by default and respond with HTTP 503. On Trixie, they run via `systemctl` and a Polkit rule for the dedicated service user `marqueepi`; `NoNewPrivileges=true` remains active.
 
-For the service template, create the system user `arcadepi` without a login shell, assign `/var/lib/arcade-pi-display` to this user and store `/etc/arcade-pi-display/config.json` as `root:arcadepi` with mode `640`. The PKLA template belongs at `/etc/polkit-1/localauthority/50-local.d/arcade-pi-display.pkla` on Buster only. On Trixie, the JavaScript rule `arcade-pi-display.rules.example` under `/etc/polkit-1/rules.d/` applies. Then enable the four services described in INSTALL.md. Enable `power_commands_enabled` only after installing the rule, checking with `pkcheck` and a restart test. API restart and shutdown have been tested on the target device.
+For the service template, create the system user `marqueepi` without a login shell, assign `/var/lib/marquee-pi` to this user and store `/etc/marquee-pi/config.json` as `root:marqueepi` with mode `640`. The PKLA template belongs at `/etc/polkit-1/localauthority/50-local.d/marquee-pi.pkla` on Buster only. On Trixie, the JavaScript rule `marquee-pi.rules.example` under `/etc/polkit-1/rules.d/` applies. Then enable the four services described in INSTALL.md. Enable `power_commands_enabled` only after installing the rule, checking with `pkcheck` and a restart test. API restart and shutdown have been tested on the target device.
 
 ## Tests
 

@@ -48,15 +48,15 @@
     X(TokenHelp, \
       L"1. Log in to the Raspberry Pi via SSH.\n\n" \
       L"2. Generate a random token: openssl rand -hex 32\n\n" \
-      L"3. Enter the 64 characters in /etc/arcade-pi-display/config.json as the value of " \
+      L"3. Enter the 64 characters in /etc/marquee-pi/config.json as the value of " \
       L"\"token\", replacing the placeholder.\n\n" \
-      L"4. sudo systemctl restart arcade-pi-display.service\n\n" \
+      L"4. sudo systemctl restart marquee-pi-api.service\n\n" \
       L"5. Enter exactly the same token here and save. Do not publish it.", \
       L"1. Per SSH am Raspberry Pi anmelden.\n\n" \
       L"2. Zufälligen Token erzeugen: openssl rand -hex 32\n\n" \
-      L"3. Die 64 Zeichen in /etc/arcade-pi-display/config.json als Wert von " \
+      L"3. Die 64 Zeichen in /etc/marquee-pi/config.json als Wert von " \
       L"\"token\" eintragen und den Platzhalter ersetzen.\n\n" \
-      L"4. sudo systemctl restart arcade-pi-display.service\n\n" \
+      L"4. sudo systemctl restart marquee-pi-api.service\n\n" \
       L"5. Genau denselben Token hier eintragen und speichern. Nicht veröffentlichen.") \
     /* gestures */ \
     X(GesturesIntro, \
