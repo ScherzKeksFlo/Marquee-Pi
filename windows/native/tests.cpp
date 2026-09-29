@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "thumbnail.hpp"
 #include <cassert>
 #include <filesystem>
 #include <iostream>
@@ -77,5 +78,24 @@ int main() {
     ini.erase(start, ini.find('\n', start) - start + 1);
     writeFile(settingsPath(), ini);
     assert(loadSettings().gestures.at("long-press") == "touch_menu");
+
+    // Thumbnails: images fill a fixed-size DIB, broken or missing files yield nullptr.
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const char* pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lZkAAAAASUVORK5CYII=";
+    BYTE png[128]; DWORD pngSize = sizeof(png);
+    assert(CryptStringToBinaryA(pngBase64, 0, CRYPT_STRING_BASE64, png, &pngSize, nullptr, nullptr));
+    std::wstring imagePath = dataDirectory() + L"\\thumb-test.png";
+    writeFile(imagePath, std::string(reinterpret_cast<char*>(png), pngSize));
+    HBITMAP thumb = createThumbnail(imagePath, 112, 70);
+    assert(thumb);
+    BITMAP info{};
+    GetObjectW(thumb, sizeof(info), &info);
+    assert(info.bmWidth == 112 && info.bmHeight == 70 && info.bmBitsPixel == 32);
+    DeleteObject(thumb);
+    writeFile(dataDirectory() + L"\\thumb-broken.png", "not an image");
+    assert(!createThumbnail(dataDirectory() + L"\\thumb-broken.png", 112, 70));
+    assert(!createThumbnail(dataDirectory() + L"\\missing.png", 112, 70));
+    assert(!createThumbnail(dataDirectory() + L"\\missing.mp4", 112, 70));
+    assert(!createThumbnail(imagePath, 0, 70));
     std::cout << "native tests passed\n";
 }
