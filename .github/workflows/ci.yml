@@ -21,10 +21,47 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Test Pi server
+      - name: Test Pi server and package builder
         run: python3 -m unittest discover -s tests
-      - name: Test gestures
-        run: node --test tests/gesture.test.js
+      - name: Test gestures and menu texts
+        run: node --test tests/gesture.test.js tests/i18n.test.js
+
+  deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build the Debian package
+        run: python3 packaging/deb/build_deb.py --output dist/deb
+      - name: Inspect the package
+        run: |
+          dpkg-deb --info dist/deb/*.deb
+          dpkg-deb --contents dist/deb/*.deb
+      - name: Lint (informational)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lintian
+          lintian --no-tag-display-limit dist/deb/*.deb || true
+      - name: Install, check and purge
+        run: |
+          # Chromium comes from a snap on Ubuntu, so ignore dependencies here; the point
+          # is to run the maintainer scripts on a Debian-family system with systemd.
+          sudo dpkg -i --force-depends dist/deb/*.deb
+          id marqueepi
+          test "$(stat -c '%U:%G %a' /etc/marquee-pi/config.json)" = "root:marqueepi 640"
+          ! grep -q CHANGE_ME /etc/marquee-pi/config.json
+          python3 -c "import json; c = json.load(open('/etc/marquee-pi/config.json')); assert len(c['token']) == 64"
+          test "$(stat -c '%U:%G %a' /var/lib/marquee-pi)" = "marqueepi:marqueepi 750"
+          test -x /opt/marquee-pi/start-kiosk.sh
+          systemctl cat marquee-pi-api.service
+          systemctl is-enabled marquee-pi-api.service
+          sudo dpkg -P marquee-pi
+          ! id marqueepi 2>/dev/null
+          test ! -e /etc/marquee-pi
+          test ! -e /var/lib/marquee-pi
+          test ! -e /opt/marquee-pi
 
   windows-native:
     runs-on: windows-latest
@@ -35,14 +72,20 @@ jobs:
           msystem: MINGW64
           update: true
           install: mingw-w64-x86_64-gcc
+      - name: Check that the app compiles
+        shell: msys2 {0}
+        run: |
+          g++ -std=c++20 -Wall -Wextra -municode -mwindows -fsyntax-only windows/native/main.cpp
       - name: Build and run native tests
         shell: msys2 {0}
         run: |
           mkdir -p build/native-tests
           g++ -std=c++20 -O2 -Wall -Wextra -static -static-libgcc -static-libstdc++ \
-            windows/native/core.cpp windows/native/tests.cpp \
+            windows/native/core.cpp windows/native/strings.cpp windows/native/thumbnail.cpp \
+            windows/native/tests.cpp \
             -o build/native-tests/Marquee-Pi-tests.exe \
-            -lwinhttp -lshell32 -ladvapi32 -lcrypt32 -luser32 -lole32 -luuid -lws2_32 -lwindowscodecs
+            -lwinhttp -lshell32 -ladvapi32 -lcrypt32 -luser32 -lgdi32 -lole32 -luuid -lws2_32 \
+            -lwindowscodecs -lmfplat -lmfreadwrite -lmf -lmfuuid -lpropsys
           touch build/native-tests/portable.flag
           cd build/native-tests
           ./Marquee-Pi-tests.exe
