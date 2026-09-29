@@ -89,7 +89,8 @@ stage.addEventListener("pointerdown", (event) => {
   recognizer.down(event.pointerId, event.clientX, event.clientY, performance.now());
   clearTimeout(longPressTimer);
   longPressTimer = setTimeout(() => {
-    if (recognizer.longPress(performance.now())) openMenu();
+    if (currentState?.shutting_down || gestureAction("long-press") === "none") return;
+    if (recognizer.longPress(performance.now())) runGesture("long-press");
   }, recognizer.longPressMs + 30);
 });
 stage.addEventListener("pointermove", (event) => {
@@ -103,17 +104,7 @@ stage.addEventListener("pointerup", (event) => {
     view = view === "marquee" ? "controls" : "marquee";
     render();
   } else if (kind && kind.startsWith("swipe-")) {
-    const action = currentState?.gesture_actions?.[kind] ?? "none";
-    if (["marquee", "box_art", "logo", "controls", "default"].includes(action)) {
-      view = action;
-      render();
-    } else if (action === "retroarch_menu") {
-      fetch("/ui/gesture", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind })
-      }).catch(console.error);
-    }
+    runGesture(kind);
   }
 });
 stage.addEventListener("pointercancel", (event) => {
@@ -121,7 +112,27 @@ stage.addEventListener("pointercancel", (event) => {
   recognizer.cancel(event.pointerId);
 });
 
-// ---- Touch menu (long press) -------------------------------------------------
+// ---- Gesture actions and touch menu ------------------------------------------
+
+const VIEW_ACTIONS = ["marquee", "box_art", "logo", "controls", "default"];
+
+function gestureAction(kind) {
+  const fallback = kind === "long-press" ? "touch_menu" : "none";
+  return currentState?.gesture_actions?.[kind] ?? fallback;
+}
+
+// Performs whatever action is assigned to a recognised swipe or long press.
+function runGesture(kind) {
+  const action = gestureAction(kind);
+  if (VIEW_ACTIONS.includes(action)) {
+    view = action;
+    render();
+  } else if (action === "touch_menu") {
+    openMenu();
+  } else if (action === "retroarch_menu") {
+    postJson("/ui/gesture", { kind }).catch(console.error);
+  }
+}
 
 const menu = document.getElementById("menu");
 const MENU_IDLE_MS = 20000;
