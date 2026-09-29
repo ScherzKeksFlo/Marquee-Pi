@@ -1,16 +1,16 @@
-# Installation auf Raspberry Pi OS
+# Installation on Raspberry Pi OS
 
-Diese Anleitung beschreibt eine Neuinstallation von Marquee-Pi auf Raspberry Pi OS Lite (32 Bit, derzeit Debian 13 „Trixie“). Getestet am 27. September 2026 auf einem Raspberry Pi 3 B+ mit 800 × 480 DSI-Touchdisplay und einer 8-GB-microSD-Karte. Bei späteren OS-Versionen Paketnamen und Polkit-Regeln erneut prüfen.
+This guide describes a fresh installation of Marquee-Pi on Raspberry Pi OS Lite (32-bit, currently Debian 13 "Trixie"). Tested on September 27, 2026 on a Raspberry Pi 3 B+ with an 800 × 480 DSI touch display and an 8 GB microSD card. For later OS versions, check package names and Polkit rules again.
 
-## Startmedium und Betriebssystem
+## Boot medium and operating system
 
-Ein frisches Startmedium von mindestens 16 GB wird empfohlen. Auf der getesteten 8-GB-Karte blieben nach OS-Update, Chromium, X11, FFmpeg und `apt clean` knapp 3 GB frei. Für weitere Videos und Spielgrafiken ist mehr Platz sinnvoll. Der Pi 3 B+ kann von microSD oder USB-Massenspeicher booten. Schreibe mit [Raspberry Pi Imager](https://www.raspberrypi.com/software/) **Raspberry Pi OS Lite (32-bit)** auf das Startmedium. Das Schreiben löscht alle bisherigen Daten darauf. Richte im Imager Benutzername, SSH-Zugang, WLAN samt Land, Zeitzone und Hostname ein. Für die Anzeige wird keine vollständige Desktop-Edition benötigt. Bewahre das alte Startmedium bis zum erfolgreichen Funktionstest auf.
+A fresh boot medium of at least 16 GB is recommended. On the tested 8 GB card, just under 3 GB remained free after the OS update, Chromium, X11, FFmpeg and `apt clean`. More space is advisable for additional videos and game artwork. The Pi 3 B+ can boot from microSD or USB mass storage. Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to write **Raspberry Pi OS Lite (32-bit)** to the boot medium. Writing erases all existing data on it. In the Imager, set up user name, SSH access, Wi-Fi including country, time zone and hostname. A full desktop edition is not needed for the display. Keep the old boot medium until the function test has succeeded.
 
-Raspberry Pi empfiehlt für einen Wechsel der Hauptversion eine [Neuinstallation](https://www.raspberrypi.com/documentation/computers/os.html) statt eines Upgrades im laufenden System. Kopiere `config.txt` und `cmdline.txt` einer alten Buster-Installation nicht blind auf Trixie: Bootpfade und Grafiktreiber haben sich geändert.
+For a major version change, Raspberry Pi recommends a [fresh installation](https://www.raspberrypi.com/documentation/computers/os.html) rather than an upgrade of the running system. Do not blindly copy `config.txt` and `cmdline.txt` from an old Buster installation to Trixie: boot paths and graphics drivers have changed.
 
-## Pakete
+## Packages
 
-Nach dem ersten Start per SSH anmelden und aktualisieren:
+After the first boot, log in via SSH and update:
 
 ```sh
 sudo apt update
@@ -19,34 +19,34 @@ sudo apt install -y python3 ffmpeg fbi curl chromium xserver-xorg xserver-xorg-i
 sudo apt clean
 ```
 
-- `python3`: lokaler API-Server ohne zusätzliche Python-Pakete.
-- `ffmpeg`: `ffprobe` prüft hochgeladene MP4-Dateien auf H.264.
-- `fbi`: zeigt den statischen Boot-Splash im Linux-Framebuffer, bevor X11 bereit ist.
-- `curl`: aktiviert bei einem direkten Pi-Shutdown das hinterlegte Shutdown-Medium im lokalen Kiosk.
-- `chromium`: Vollbildanzeige der lokalen Webseite.
-- `xserver-xorg`, `xserver-xorg-input-libinput`, `xinit`, `xauth`: X11-Sitzung und Touch-Eingaben. Der getestete ft5x06-Touchscreen wurde über libinput erkannt.
-- `x11-xserver-utils`: `xset` schaltet Bildschirmschoner und DPMS ab.
-- `polkitd`: eng begrenzte Berechtigung für Pi-Neustart und Shutdown.
-- `openssl`: zufälligen API-Token erzeugen.
+- `python3`: local API server without additional Python packages.
+- `ffmpeg`: `ffprobe` checks uploaded MP4 files for H.264.
+- `fbi`: shows the static boot splash in the Linux framebuffer before X11 is ready.
+- `curl`: activates the stored shutdown media in the local kiosk on a direct Pi shutdown.
+- `chromium`: full-screen display of the local web page.
+- `xserver-xorg`, `xserver-xorg-input-libinput`, `xinit`, `xauth`: X11 session and touch input. The tested ft5x06 touchscreen was detected via libinput.
+- `x11-xserver-utils`: `xset` disables the screen saver and DPMS.
+- `polkitd`: tightly limited permission for Pi restart and shutdown.
+- `openssl`: generate a random API token.
 
-Falls Xorg unter dem Kiosk-Benutzer nicht startet, zunächst `journalctl -u arcade-pi-kiosk -b` prüfen. Auf manchen Installationen ist zusätzlich `xserver-xorg-legacy` nötig; erst nach einem entsprechenden Fehler installieren und konfigurieren.
+If Xorg does not start under the kiosk user, first check `journalctl -u arcade-pi-kiosk -b`. On some installations, `xserver-xorg-legacy` is additionally required; install and configure it only after a corresponding error.
 
-## Netzwerk
+## Network
 
-Der Pi benötigt zum Starten des Standardmediums kein Netzwerk. Für Spielgrafiken muss Windows die Pi-API auf TCP-Port 8765 erreichen. Bei direkter Ethernet-Verbindung können beispielsweise `10.0.0.1/24` für Windows und `10.0.0.10/24` für den Pi verwendet werden; es darf auf dieser Verbindung nur **eine** passende IP-Konfiguration aktiv sein. Unter aktuellem Raspberry Pi OS verwaltet [NetworkManager](https://www.raspberrypi.com/documentation/configuration/) die Verbindungen. Das aktive Ethernet-Profil mit `nmcli -g GENERAL.CONNECTION device show eth0` ermitteln und dann anpassen:
+The Pi needs no network to start the default media. For game artwork, Windows must be able to reach the Pi API on TCP port 8765. With a direct Ethernet connection, for example `10.0.0.1/24` can be used for Windows and `10.0.0.10/24` for the Pi; only **one** matching IP configuration may be active on this connection. On current Raspberry Pi OS, [NetworkManager](https://www.raspberrypi.com/documentation/configuration/) manages the connections. Determine the active Ethernet profile with `nmcli -g GENERAL.CONNECTION device show eth0` and then adjust it:
 
 ```sh
 sudo nmcli connection modify '<ETHERNET-PROFIL>' ipv4.method manual ipv4.addresses 10.0.0.10/24 ipv4.never-default yes
 sudo nmcli connection up '<ETHERNET-PROFIL>'
 ```
 
-Bei anderer Netzstruktur die Adressen entsprechend ändern. WLAN kann parallel für Updates und SSH verwendet werden. Die API-Zugriffsliste in `config.json` sollte nur die Windows-IP enthalten.
+With a different network layout, change the addresses accordingly. Wi-Fi can be used in parallel for updates and SSH. The API access list in `config.json` should contain only the Windows IP.
 
-Die API verwendet bewusst einfaches HTTP; der Header mit dem API-Token ist auf der Leitung nicht verschlüsselt. Port 8765 daher weder am Router freigeben noch aus dem Internet erreichbar machen. Für die direkte Verbindung `"bind": "10.0.0.10"` und `"allowed_client_ips": ["10.0.0.1"]` verwenden. Soll die API zusätzlich über WLAN erreichbar sein, kann `bind` auf `0.0.0.0` bleiben, aber `allowed_client_ips` muss alle erlaubten Windows-Adressen ausdrücklich aufzählen. Firewallregeln können den Zugriff zusätzlich auf die direkte Schnittstelle begrenzen.
+The API deliberately uses plain HTTP; the header with the API token is not encrypted on the wire. Therefore, do not open port 8765 on the router or make it reachable from the internet. For the direct connection, use `"bind": "10.0.0.10"` and `"allowed_client_ips": ["10.0.0.1"]`. If the API should also be reachable via Wi-Fi, `bind` can stay at `0.0.0.0`, but `allowed_client_ips` must explicitly list all permitted Windows addresses. Firewall rules can additionally restrict access to the direct interface.
 
-## Anwendung und Dienste
+## Application and services
 
-Die folgenden Befehle im `pi`-Ordner einer lokalen Kopie dieses Repositorys auf dem Pi ausführen. Für die Kiosk-Anmeldung muss ein normaler Benutzer vorhanden sein; hier wird er `pi` genannt. Bei anderem Namen `PI_USER` entsprechend setzen.
+Run the following commands in the `pi` folder of a local copy of this repository on the Pi. A regular user must exist for the kiosk login; it is called `pi` here. If the name is different, set `PI_USER` accordingly.
 
 ```sh
 PI_USER=pi
@@ -64,7 +64,7 @@ sudo install -o root -g arcadepi -m 640 config.example.json /etc/arcade-pi-displ
 openssl rand -hex 32
 ```
 
-Den ausgegebenen Token in `/etc/arcade-pi-display/config.json` eintragen (`sudo nano ...`). `allowed_client_ips` auf die Windows-IP setzen, etwa `["10.0.0.1"]`; `power_commands_enabled` vorerst `false` lassen. Token, persönliche Medien und lokale Konfiguration gehören nicht ins Git-Repository.
+Enter the printed token in `/etc/arcade-pi-display/config.json` (`sudo nano ...`). Set `allowed_client_ips` to the Windows IP, for example `["10.0.0.1"]`; leave `power_commands_enabled` at `false` for now. Token, personal media and local configuration do not belong in the Git repository.
 
 ```sh
 sudo install -o root -g root -m 644 arcade-pi-display.service.example /etc/systemd/system/arcade-pi-display.service
@@ -77,7 +77,7 @@ sudo systemctl enable --now arcade-pi-display.service arcade-pi-kiosk.service ma
 sudo systemctl enable marquee-pi-boot-splash.service
 ```
 
-Die Kiosk-Vorlage startet auch auf der Lite-Edition (`multi-user.target`). `start-kiosk.sh` setzt den X11-Bildschirmschoner auf Timeout 0, deaktiviert DPMS und nutzt Software-Rendering, um die GPU des Pi 3 B+ zu entlasten. Die Xorg-Konfiguration wählt nur den `modesetting`-Treiber für DSI und verhindert einen zweiten `fbdev`-Bildschirm. Die Chromium-Richtlinie deaktiviert die Übersetzungsleiste. Prüfen mit:
+The kiosk template also starts on the Lite edition (`multi-user.target`). `start-kiosk.sh` sets the X11 screen saver to timeout 0, disables DPMS and uses software rendering to relieve the GPU of the Pi 3 B+. The Xorg configuration selects only the `modesetting` driver for DSI and prevents a second `fbdev` screen. The Chromium policy disables the translation bar. Verify with:
 
 ```sh
 systemctl is-active arcade-pi-display arcade-pi-kiosk
@@ -85,24 +85,24 @@ sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xset q
 sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr --current
 ```
 
-## Boot-Splash und stiller Systemstart
+## Boot splash and quiet system startup
 
-Das Windows-Tool lädt den Boot-Splash später über **Medien verwalten… > Als Boot-Splash** hoch. Er muss ein PNG oder JPEG sein und wird als `/var/lib/arcade-pi-display/boot-splash` gespeichert. Bis ein eigenes Bild gewählt wurde, kann beispielsweise ein PNG manuell an diese Stelle kopiert werden:
+The Windows tool later uploads the boot splash via **Manage media… > Use as boot splash**. It must be a PNG or JPEG and is stored as `/var/lib/arcade-pi-display/boot-splash`. Until a custom image has been chosen, a PNG can be copied manually to this location, for example:
 
 ```sh
 sudo install -o arcadepi -g arcadepi -m 640 boot.png /var/lib/arcade-pi-display/boot-splash
 ```
 
-Anschließend den normalen Konsolentext ausblenden. Das Skript sichert die ursprüngliche Kernel-Befehlszeile einmalig als `/boot/firmware/cmdline.txt.marquee-pi-before-quiet-boot`, prüft vor dem atomaren Ersetzen den erforderlichen `root=`-Eintrag, ergänzt die leisen Startoptionen und deaktiviert den normalen Getty auf tty1. `console=tty1` bleibt bewusst erhalten, damit Kernel-, Boot- und Dateisystemfehler weiterhin sichtbar bleiben; nach einem normalen Start erscheint dort wegen des deaktivierten Gettys kein Login-Prompt:
+Then hide the normal console text. The script saves the original kernel command line once as `/boot/firmware/cmdline.txt.marquee-pi-before-quiet-boot`, checks the required `root=` entry before the atomic replacement, adds the quiet startup options and disables the normal getty on tty1. `console=tty1` is deliberately retained so that kernel, boot and file system errors remain visible; after a normal start, no login prompt appears there because the getty is disabled:
 
 ```sh
 sudo marquee-pi-configure-quiet-boot
 sudo reboot
 ```
 
-Die serielle Konsole und tty1 bleiben für frühe Diagnosemeldungen erhalten. Ganz frühe Firmwareausgaben vor dem Linux-Framebuffer sowie tatsächliche Bootfehler können deshalb sichtbar sein. Sobald `/dev/fb0` verfügbar ist, zeigt `marquee-pi-boot-splash.service` das statische Bild; X11 übernimmt danach mit dem Standardmedium.
+The serial console and tty1 are retained for early diagnostic messages. Very early firmware output before the Linux framebuffer, as well as actual boot errors, can therefore be visible. As soon as `/dev/fb0` is available, `marquee-pi-boot-splash.service` shows the static image; X11 then takes over with the default media.
 
-Quiet Boot rückgängig machen:
+Undo quiet boot:
 
 ```sh
 sudo cp -p /boot/firmware/cmdline.txt.marquee-pi-before-quiet-boot /boot/firmware/cmdline.txt
@@ -110,21 +110,21 @@ sudo systemctl enable getty@tty1.service
 sudo reboot
 ```
 
-Wenn der Pi nicht mehr startet, die FAT-Bootpartition mit einem Kartenleser unter Windows öffnen und `cmdline.txt.marquee-pi-before-quiet-boot` als `cmdline.txt` zurückkopieren. Die Datei muss eine einzige Zeile bleiben.
+If the Pi no longer starts, open the FAT boot partition with a card reader on Windows and copy `cmdline.txt.marquee-pi-before-quiet-boot` back as `cmdline.txt`. The file must remain a single line.
 
-## Medien über das Windows-Tool einrichten
+## Setting up media via the Windows tool
 
-Im Windows-Tray **Medien verwalten…** öffnen, eine Datei hinzufügen und eine Rolle wählen:
+In the Windows tray, open **Manage media…**, add a file and choose a role:
 
-- **Als Standard:** JPG, PNG, GIF, WebP oder H.264-MP4; erscheint ohne laufendes Spiel.
-- **Als Boot-Splash:** PNG oder JPEG; erscheint ab dem nächsten Pi-Start vor dem Kiosk.
-- **Als Shutdown-Medium:** JPG, PNG, GIF, WebP oder H.264-MP4; erscheint vor dem Ausschalten.
+- **Use as default:** JPG, PNG, GIF, WebP or H.264 MP4; appears when no game is running.
+- **Use as boot splash:** PNG or JPEG; appears before the kiosk from the next Pi start.
+- **Use as shutdown media:** JPG, PNG, GIF, WebP or H.264 MP4; appears before power-off.
 
-Ein Shutdown-Video spielt einmal. Der Pi ermittelt die Dauer bereits beim Upload und speichert sie im Medienmanifest. Beim Ausschalten wartet er diese Dauer plus eine Sekunde, mindestens vier und höchstens 30 Sekunden. Wird der Pi direkt per `systemctl poweroff` heruntergefahren, aktiviert `marquee-pi-shutdown-animation.service` die lokale Anzeige, bevor API und Kiosk beendet werden. Bei einem Neustart wird die Shutdown-Animation übersprungen. Beim Shutdown aus dem Windows-Tool oder während des Windows-Shutdowns wechselt die API bereits vor dem eigentlichen Poweroff auf das Medium.
+A shutdown video plays once. The Pi determines the duration at upload time and stores it in the media manifest. On shutdown, it waits this duration plus one second, at least four and at most 30 seconds. If the Pi is shut down directly with `systemctl poweroff`, `marquee-pi-shutdown-animation.service` activates the local display before the API and kiosk are stopped. On a restart, the shutdown animation is skipped. On a shutdown from the Windows tool or during the Windows shutdown, the API switches to the media already before the actual poweroff.
 
-## Display testen und zurücksetzen
+## Testing and resetting the display
 
-Das Hilfsskript `marquee-display-test.sh` kann als `/usr/local/sbin/marquee-display-test` installiert werden. Es benötigt für `blink` und `reset` Root-Rechte:
+The helper script `marquee-display-test.sh` can be installed as `/usr/local/sbin/marquee-display-test`. It requires root privileges for `blink` and `reset`:
 
 ```sh
 sudo install -o root -g root -m 755 marquee-display-test.sh /usr/local/sbin/marquee-display-test
@@ -133,13 +133,13 @@ sudo marquee-display-test blink
 sudo marquee-display-test reset
 ```
 
-`status` zeigt DSI-, Touch-, X11- und Dienststatus. `blink` schaltet ein erkanntes Display drei Sekunden aus und wieder ein. `reset` setzt einen vorhandenen DSI-Ausgang und den Kiosk zurück. Fehlt DSI vollständig, führt `reset` einmalig einen Warmstart des Pi aus; die Displaystromversorgung muss dabei eingeschaltet bleiben.
+`status` shows DSI, touch, X11 and service status. `blink` switches a detected display off for three seconds and back on. `reset` resets an existing DSI output and the kiosk. If DSI is missing entirely, `reset` performs a single warm restart of the Pi; the display power supply must stay on during this.
 
-## Schwarzes DSI-Display auf dem Pi 3 B+
+## Black DSI display on the Pi 3 B+
 
-Fehlt nach einem Kaltstart `card0-DSI-1` und erscheint stattdessen nur `Composite-1`, war die Displayplatine bei der frühen Firmwareerkennung möglicherweise noch nicht bereit. Auf dem getesteten Pi wurde das 7-Zoll-Display über einen separat versorgten USB-Hub gespeist. Ein unveränderter FKMS-Warmstart erkannte das Display zuverlässig.
+If `card0-DSI-1` is missing after a cold start and only `Composite-1` appears instead, the display board may not have been ready yet during the early firmware detection. On the tested Pi, the 7-inch display was powered via a separately supplied USB hub. An unchanged FKMS warm restart detected the display reliably.
 
-Als dauerhafte Lösung die vorhandene `/boot/firmware/config.txt` sichern und `bootcode_delay=10` direkt in diese Datei eintragen:
+As a permanent solution, back up the existing `/boot/firmware/config.txt` and enter `bootcode_delay=10` directly in this file:
 
 ```ini
 bootcode_delay=10
@@ -148,17 +148,17 @@ dtoverlay=vc4-fkms-v3d
 #disable_fw_kms_setup=1
 ```
 
-`bootcode_delay` gibt der Displayplatine vor der Erkennung zehn Sekunden zusätzliche Startzeit. Fünf Sekunden bestanden zunächst drei Kaltstarts, später trat die Nichterkennung jedoch erneut auf. Deshalb verwendet das Zielsystem inzwischen zehn Sekunden.
+`bootcode_delay` gives the display board ten seconds of additional startup time before detection. Five seconds initially passed three cold starts, but the non-detection later occurred again. The target system has therefore since used ten seconds.
 
-Wenn FKMS trotz erkanntem DSI den 720×480-Composite-Ausgang als primären Framebuffer verwendet, die aktuelle Kernel-Befehlszeile zuerst sichern. Anschließend in derselben einzelnen Zeile von `/boot/firmware/cmdline.txt` ergänzen:
+If FKMS uses the 720×480 composite output as the primary framebuffer despite DSI being detected, first back up the current kernel command line. Then add the following in the same single line of `/boot/firmware/cmdline.txt`:
 
 ```text
 video=Composite-1:d video=DSI-1:800x480@60
 ```
 
-Vor dem Neustart prüfen, dass die Zeile weiterhin den vorhandenen `root=`-Parameter enthält. Auf dem Zielsystem führte diese Einstellung zu `DSI-1 connected primary 800x480` und `Composite-1 disconnected`. Das Quiet-Boot-Skript behält beide `video=`-Parameter bei.
+Before restarting, check that the line still contains the existing `root=` parameter. On the target system, this setting resulted in `DSI-1 connected primary 800x480` and `Composite-1 disconnected`. The quiet boot script retains both `video=` parameters.
 
-Status prüfen mit:
+Check the status with:
 
 ```sh
 ls /sys/class/drm/
@@ -167,23 +167,23 @@ marquee-display-test status
 sudo -u "$PI_USER" env DISPLAY=:0 XAUTHORITY="/home/$PI_USER/.Xauthority" xrandr --current
 ```
 
-Im Fehlerfall kann `sudo marquee-display-test reset` als Rückfalllösung verwendet werden. Fehlt DSI vollständig, startet das Skript den Pi einmal warm neu, während die Displayplatine am eingeschalteten Hub versorgt bleibt.
+In case of failure, `sudo marquee-display-test reset` can be used as a fallback. If DSI is missing entirely, the script restarts the Pi warm once while the display board stays powered on the powered hub.
 
-Ein Wechsel auf vollständiges KMS war auf dem Testgerät keine Lösung. Die feste Konfiguration mit `vc4-kms-v3d`, `vc4-kms-dsi-7inch`, `ignore_lcd=1` und `disable_touchscreen=1` erkannte zwar DSI und die Backlight-Schnittstelle, das reale Display blieb jedoch schwarz. Kernelmeldungen zeigten I/O-Fehler beim Aktivieren der Hintergrundbeleuchtung und beim Touchcontroller. FKMS mit `bootcode_delay=10` und der festen DSI-Auswahl bleibt daher die getestete Konfiguration für dieses Gerät. Andere Pi-Modelle und Displayvarianten können KMS benötigen.
+Switching to full KMS was not a solution on the test device. The fixed configuration with `vc4-kms-v3d`, `vc4-kms-dsi-7inch`, `ignore_lcd=1` and `disable_touchscreen=1` did detect DSI and the backlight interface, but the real display stayed black. Kernel messages showed I/O errors when enabling the backlight and on the touch controller. FKMS with `bootcode_delay=10` and the fixed DSI selection therefore remains the tested configuration for this device. Other Pi models and display variants may require KMS.
 
-## Standardvideo auf einem Pi 3 B+
+## Default video on a Pi 3 B+
 
-Für MP4-Videos H.264 mit `yuv420p` verwenden und die Bildgröße möglichst an das 800 × 480-Display anpassen. Ein hochgeladenes 1254 × 1254-H.264-Video ließ sich auf dem Testgerät nicht zuverlässig im Chromium-Kiosk abspielen; eine 480 × 480-Version lief. Beispiel für eine quadratische Vorlage:
+For MP4 videos, use H.264 with `yuv420p` and adapt the image size to the 800 × 480 display where possible. An uploaded 1254 × 1254 H.264 video could not be played reliably in the Chromium kiosk on the test device; a 480 × 480 version worked. Example for a square template:
 
 ```sh
-ffmpeg -i eingabe.mp4 -vf "scale=480:480:flags=lanczos" -c:v libx264 -preset veryfast -profile:v baseline -level 3.0 -pix_fmt yuv420p -crf 23 -an ausgabe.mp4
+ffmpeg -i input.mp4 -vf "scale=480:480:flags=lanczos" -c:v libx264 -preset veryfast -profile:v baseline -level 3.0 -pix_fmt yuv420p -crf 23 -an output.mp4
 ```
 
-Die Datei `ausgabe.mp4` über das Windows-Tool als Standardmedium hochladen. Das Original außerhalb des Pi-Datenordners aufbewahren.
+Upload the file `output.mp4` as default media via the Windows tool. Keep the original outside the Pi data folder.
 
-## Neustart und Ausschalten per Windows-Tool
+## Restart and shutdown via the Windows tool
 
-Trixie verwendet JavaScript-Regeln unter `/etc/polkit-1/rules.d`; die alte Buster-Datei `arcade-pi-display.pkla.example` gilt hier nicht. Die Vorlage erlaubt nur dem Dienstbenutzer `arcadepi` die vier nötigen login1-Aktionen.
+Trixie uses JavaScript rules under `/etc/polkit-1/rules.d`; the old Buster file `arcade-pi-display.pkla.example` does not apply here. The template permits only the service user `arcadepi` the four required login1 actions.
 
 ```sh
 sudo install -o root -g root -m 644 arcade-pi-display.rules.example /etc/polkit-1/rules.d/50-arcade-pi-display.rules
@@ -194,15 +194,15 @@ sudo -u arcadepi pkcheck --action-id org.freedesktop.login1.reboot --process "$P
 sudo -u arcadepi pkcheck --action-id org.freedesktop.login1.power-off --process "$PROCESS"
 ```
 
-Die Prüfung muss für den Dienstbenutzer erfolgen; beide `pkcheck`-Aufrufe müssen erfolgreich sein. Erst danach `power_commands_enabled` in `config.json` auf `true` setzen und den API-Dienst neu starten. Den API-Neustart zuerst prüfen. Der Shutdown-Test kommt zuletzt, weil der Pi danach erst durch einen neuen Stromzyklus wieder startet. `NoNewPrivileges=true` in der Dienstdatei bleibt aktiv.
+The check must be performed for the service user; both `pkcheck` calls must succeed. Only then set `power_commands_enabled` in `config.json` to `true` and restart the API service. Test the API restart first. The shutdown test comes last because the Pi only starts again afterwards through a new power cycle. `NoNewPrivileges=true` in the service file remains active.
 
-## Funktionstest
+## Function test
 
-1. Im Windows-Tool ein statisches Boot-Bild hochladen. Ohne Windows-Verbindung neu booten: Boot-Splash und danach das gespeicherte Standardbild oder Video erscheinen automatisch; dazwischen wird kein normaler Konsolentext gezeigt.
-2. Prüfen, dass `xset q` `timeout: 0` und `DPMS is Disabled` meldet, `xrandr` `DSI-1 connected 800x480` anzeigt und die Anzeige mindestens zehn Minuten sichtbar bleibt.
-3. Windows-Tool mit Pi-IP und Token verbinden. Spiel in LaunchBox/Big Box starten: passendes Marquee erscheint.
-4. Auf das Display tippen: Bei vorhandener Steuerungsgrafik zwischen Marquee und Control Panel wechseln. Die vier Wischgesten werden im Windows-Tool konfiguriert; die gewählte Bildansicht erscheint sofort.
-5. Spiel verlassen: Standardmedium erscheint. Pi-Neustart über das Tray-Menü testen; Medium erscheint nach dem Booten erneut.
-6. Ein Shutdown-Medium hochladen. Pi-Shutdown über das Tray-Menü erst nach allen anderen Tests durchführen: Medium erscheint vollständig beziehungsweise höchstens 30 Sekunden, anschließend ist der Pi per Ping/SSH nicht mehr erreichbar.
+1. Upload a static boot image in the Windows tool. Reboot without a Windows connection: the boot splash and then the stored default image or video appear automatically; no normal console text is shown in between.
+2. Check that `xset q` reports `timeout: 0` and `DPMS is Disabled`, `xrandr` shows `DSI-1 connected 800x480` and the display stays visible for at least ten minutes.
+3. Connect the Windows tool with the Pi IP and token. Start a game in LaunchBox/Big Box: the matching marquee appears.
+4. Tap the display: if controls artwork is available, switch between marquee and control panel. The four swipe gestures are configured in the Windows tool; the chosen image view appears immediately.
+5. Exit the game: the default media appears. Test a Pi restart via the tray menu; the media appears again after booting.
+6. Upload a shutdown media file. Perform the Pi shutdown via the tray menu only after all other tests: the media appears in full or for at most 30 seconds, after which the Pi is no longer reachable via ping/SSH.
 
-Bei Fehlern `journalctl -u arcade-pi-display -u arcade-pi-kiosk -b --no-pager` lesen. Für eine Community-Installation eigene IP-Adressen, Displayausrichtung, Benutzername und Standardmedium anpassen.
+In case of errors, read `journalctl -u arcade-pi-display -u arcade-pi-kiosk -b --no-pager`. For a community installation, adapt your own IP addresses, display orientation, user name and default media.

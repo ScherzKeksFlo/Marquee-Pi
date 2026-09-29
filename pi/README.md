@@ -1,49 +1,49 @@
-# Pi-Anzeigeprogramm
+# Pi display program
 
-Die vollständige Anleitung für eine frische Raspberry Pi OS Lite-Installation steht in [INSTALL.md](INSTALL.md). Die Trixie-Installation und Anzeige wurden auf einem Pi 3 B+ mit 7-Zoll-DSI-Display geprüft. Bei schwarzem DSI-Bild auf Kernel 6.18 beschreibt INSTALL.md den getesteten FKMS-Workaround.
+The complete guide for a fresh Raspberry Pi OS Lite installation is in [INSTALL.md](INSTALL.md). The Trixie installation and display were tested on a Pi 3 B+ with a 7-inch DSI display. For a black DSI picture on kernel 6.18, INSTALL.md describes the tested FKMS workaround.
 
-Der Python-Server liefert die lokale Vollbildanzeige und eine token-geschützte API. Die Anzeige lädt ein auf dem Pi gespeichertes Standardbild oder Video, zeigt Spielgrafiken und verarbeitet Tippen sowie vier Wischrichtungen. Boot-Splash und Shutdown-Medium werden ebenfalls über das Windows-Tool hochgeladen und dauerhaft auf dem Pi gespeichert.
+The Python server provides the local full-screen display and a token-protected API. The display loads a default image or video stored on the Pi, shows game artwork and handles taps as well as four swipe directions. The boot splash and shutdown media are also uploaded via the Windows tool and stored permanently on the Pi.
 
-## Touchmenü
+## Touch menu
 
-Ein Overlay-Menü direkt am Display, standardmäßig per langem Drücken (ca. 0,8 s, Finger ruhig halten) zu öffnen. Es bietet die Ansichten Marquee, Box Art, Logo, Controls und Standard, die Helligkeit in 10-%-Schritten (mindestens 5 %, bleibt nach einem Neustart erhalten) und eine Statusanzeige (Verbindung zum Arcade-PC, IP-Adressen, Spiel, Version). Neustart und Herunterfahren liegen mit Bestätigung auf einer eigenen Seite hinter dem Button **System …**. Welche Geste das Menü öffnet, legt die Aktion `touch_menu` fest: Sie lässt sich jeder der fünf Gesten `long-press`, `swipe-down`, `swipe-up`, `swipe-right` und `swipe-left` zuordnen (Windows-Tool, Tab **Gesten**, oder `POST /v1/gesture-config`). Ohne Konfiguration bleibt `long-press` auf `touch_menu`; wird `long-press` auf `none` gesetzt, löst langes Drücken nichts aus. Nach 20 s ohne Eingabe schließt sich das Menü von selbst. Die zugehörigen Endpunkte `/ui/system`, `/ui/brightness` und `/ui/power` sind wie alle `/ui/`-Pfade nur von `127.0.0.1` aus erreichbar. Neustart und Herunterfahren nutzen dieselbe Polkit-Prüfung wie die API und erfordern `power_commands_enabled`. Für die Helligkeit braucht der Dienst Schreibzugriff auf `/sys/class/backlight/*/brightness`; die Service-Vorlage gibt dafür die Gruppe `video` und den Pfad `/sys/devices/platform/rpi_backlight` frei.
+An overlay menu directly on the display, opened by default with a long press (approx. 0.8 s, hold the finger still). It offers the views Marquee, Box Art, Logo, Controls and Default, the brightness in 10% steps (minimum 5%, retained after a restart) and a status display (connection to the arcade PC, IP addresses, game, version). Restart and shut down are on a separate page behind the **System …** button, with confirmation. Which gesture opens the menu is determined by the `touch_menu` action: it can be assigned to any of the five gestures `long-press`, `swipe-down`, `swipe-up`, `swipe-right` and `swipe-left` (Windows tool, **Gestures** tab, or `POST /v1/gesture-config`). Without configuration, `long-press` stays on `touch_menu`; if `long-press` is set to `none`, a long press triggers nothing. After 20 s without input, the menu closes by itself. The associated endpoints `/ui/system`, `/ui/brightness` and `/ui/power` are, like all `/ui/` paths, reachable only from `127.0.0.1`. Restart and shutdown use the same Polkit check as the API and require `power_commands_enabled`. For brightness, the service needs write access to `/sys/class/backlight/*/brightness`; the service template grants the `video` group and the path `/sys/devices/platform/rpi_backlight` for this.
 
-## Voraussetzungen
+## Requirements
 
-- Raspberry Pi OS Lite mit X11, `xinit`, `xset` (`x11-xserver-utils`) und Chromium (am Pi 3 B+ mit Trixie/Python 3.13 geprüft)
+- Raspberry Pi OS Lite with X11, `xinit`, `xset` (`x11-xserver-utils`) and Chromium (tested on the Pi 3 B+ with Trixie/Python 3.13)
 - Python 3
-- `ffprobe` aus FFmpeg für MP4-Uploads
-- `fbi` für das statische Bild vor dem X11-Kiosk
-- `curl` für die lokale Shutdown-Anzeige
-- Ein dauerhaft beschreibbarer Datenordner für das Standardmedium
-- Netzwerkverbindung zum Windows-PC für Spielereignisse; zum Starten der Standardanzeige ist sie nicht erforderlich
+- `ffprobe` from FFmpeg for MP4 uploads
+- `fbi` for the static image before the X11 kiosk
+- `curl` for the local shutdown display
+- A permanently writable data folder for the default media
+- Network connection to the Windows PC for game events; it is not required to start the default display
 
-## Lokal starten
+## Running locally
 
-1. `config.example.json` nach `config.json` kopieren und einen zufälligen Token von mindestens 24 Zeichen setzen. Diese Datei nicht in Git aufnehmen.
-2. `data_dir` auf einen dauerhaft beschreibbaren Pfad setzen und den Ordner dem Pi-Dienstbenutzer zuordnen.
-3. `python3 arcade_pi.py --config config.json` starten.
-4. `http://127.0.0.1:8765/ui/` im Browser öffnen. `start-kiosk.sh` startet Chromium im Vollbild.
+1. Copy `config.example.json` to `config.json` and set a random token of at least 24 characters. Do not add this file to Git.
+2. Set `data_dir` to a permanently writable path and assign the folder to the Pi service user.
+3. Start `python3 arcade_pi.py --config config.json`.
+4. Open `http://127.0.0.1:8765/ui/` in the browser. `start-kiosk.sh` starts Chromium in full-screen mode.
 
-`arcade-pi-display.service.example`, `arcade-pi-kiosk.service.example`, `marquee-pi-boot-splash.service.example` und `marquee-pi-shutdown-animation.service.example` sind Vorlagen für den Systemstart. Benutzername und Pfade müssen zur Pi-Installation passen. Der Kioskdienst startet Xorg auf `tty7` und Chromium ohne Desktop-Sitzung. `start-kiosk.sh` deaktiviert beim X11-Start den Bildschirmschoner und DPMS. Der Boot-Dienst zeigt das hochgeladene PNG/JPEG auf `tty1`; der Shutdown-Dienst zeigt das hinterlegte Medium, solange API und Kiosk noch laufen. Die aktuelle Trixie-Installation verwendet die Chromium-Richtlinie unter `/etc/chromium/policies/managed/`.
+`arcade-pi-display.service.example`, `arcade-pi-kiosk.service.example`, `marquee-pi-boot-splash.service.example` and `marquee-pi-shutdown-animation.service.example` are templates for system startup. User name and paths must match the Pi installation. The kiosk service starts Xorg on `tty7` and Chromium without a desktop session. `start-kiosk.sh` disables the screen saver and DPMS at X11 startup. The boot service shows the uploaded PNG/JPEG on `tty1`; the shutdown service shows the stored media while the API and kiosk are still running. The current Trixie installation uses the Chromium policy under `/etc/chromium/policies/managed/`.
 
-## Neustart und Shutdown
+## Restart and shutdown
 
-Die API-Befehle sind standardmäßig deaktiviert und antworten mit HTTP 503. Auf Trixie laufen sie über `systemctl` und eine Polkit-Regel für den eigenen Dienstbenutzer `arcadepi`; `NoNewPrivileges=true` bleibt aktiv.
+The API commands are disabled by default and respond with HTTP 503. On Trixie, they run via `systemctl` and a Polkit rule for the dedicated service user `arcadepi`; `NoNewPrivileges=true` remains active.
 
-Für die Dienstvorlage den Systembenutzer `arcadepi` ohne Login-Shell anlegen, `/var/lib/arcade-pi-display` diesem Benutzer zuordnen und `/etc/arcade-pi-display/config.json` als `root:arcadepi` mit Modus `640` speichern. Die PKLA-Vorlage gehört nur auf Buster nach `/etc/polkit-1/localauthority/50-local.d/arcade-pi-display.pkla`. Auf Trixie gilt die JavaScript-Regel `arcade-pi-display.rules.example` unter `/etc/polkit-1/rules.d/`. Danach die vier in INSTALL.md beschriebenen Dienste aktivieren. `power_commands_enabled` erst nach Installation der Regel, Prüfung mit `pkcheck` und einem Neustarttest aktivieren. API-Neustart und Shutdown sind am Zielgerät geprüft.
+For the service template, create the system user `arcadepi` without a login shell, assign `/var/lib/arcade-pi-display` to this user and store `/etc/arcade-pi-display/config.json` as `root:arcadepi` with mode `640`. The PKLA template belongs at `/etc/polkit-1/localauthority/50-local.d/arcade-pi-display.pkla` on Buster only. On Trixie, the JavaScript rule `arcade-pi-display.rules.example` under `/etc/polkit-1/rules.d/` applies. Then enable the four services described in INSTALL.md. Enable `power_commands_enabled` only after installing the rule, checking with `pkcheck` and a restart test. API restart and shutdown have been tested on the target device.
 
 ## Tests
 
-Vom Repository-Stamm:
+From the repository root:
 
 ```text
 PYTHONPATH=pi python3 -m unittest discover -s pi/tests -v
 node pi/tests/gesture.test.js
 ```
 
-Die Windows-PowerShell-Entsprechung für den ersten Befehl ist `$env:PYTHONPATH='pi'; python -m unittest discover -s pi/tests -v`. Weitere Details stehen in [docs/media.md](../docs/media.md) und [docs/touch.md](../docs/touch.md).
+The Windows PowerShell equivalent of the first command is `$env:PYTHONPATH='pi'; python -m unittest discover -s pi/tests -v`. Further details are in [docs/media.md](../docs/media.md) and [docs/touch.md](../docs/touch.md).
 
-## Gerätetest
+## Device test
 
-Am Raspberry Pi 3 B+ mit Raspberry Pi OS Trixie, Kernel 6.18, Chromium und 800 × 480 Touchdisplay geprüft: API-Tests, Touchgesten, H.264-Standardvideo, reale Big-Box-Spielwechsel, RetroArch-Menüaufruf sowie Shutdown über Big Box und das Windows-Startmenü funktionieren. Das DSI-Display wurde mit `bootcode_delay=5` in drei aufeinanderfolgenden Kaltstarts erkannt.
+Tested on a Raspberry Pi 3 B+ with Raspberry Pi OS Trixie, kernel 6.18, Chromium and an 800 × 480 touch display: API tests, touch gestures, H.264 default video, real Big Box game switches, RetroArch menu invocation as well as shutdown via Big Box and the Windows Start menu work. The DSI display was detected with `bootcode_delay=5` in three consecutive cold starts.

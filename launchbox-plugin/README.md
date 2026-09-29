@@ -1,15 +1,15 @@
-# LaunchBox/Big-Box-Plugin
+# LaunchBox/Big Box plugin
 
-`GameEventsPlugin` implementiert `IGameLaunchingPlugin`. Nach erfolgreichem Spielstart meldet es Titel, Marquee bzw. Banner/Logo und eine vorhandene Arcade-Steuerungsgrafik sowie Box-Front-Art und Clear Logo an die lokal laufende Windows-App. Nach dem von LaunchBox erkannten Spielende meldet es `exit`. Die Bildpfade werden im LaunchBox-Verzeichnis aufgelöst. Ist die App nicht erreichbar, läuft der Spielstart weiter.
+`GameEventsPlugin` implements `IGameLaunchingPlugin`. After a successful game launch, it reports the title, marquee or banner/logo, an existing arcade controls artwork, as well as box front art and clear logo to the locally running Windows app. After the game end detected by LaunchBox, it reports `exit`. Image paths are resolved within the LaunchBox directory. If the app is not reachable, the game launch continues.
 
 ## Build
 
-Die benötigte `Unbroken.LaunchBox.Plugins.dll` muss aus der eigenen LaunchBox-Installation kommen (`Core` bei der getesteten Version 14.0, bei älteren Versionen ggf. `Metadata`) und wird nicht mitgeliefert. Der Installationspfad wird beim Build als `LaunchBoxRoot` übergeben:
+The required `Unbroken.LaunchBox.Plugins.dll` must come from your own LaunchBox installation (`Core` in the tested version 14.0, possibly `Metadata` in older versions) and is not included. The installation path is passed as `LaunchBoxRoot` during the build:
 
 ```powershell
-dotnet build launchbox-plugin/MarqueePiLaunchBox.csproj -c Release -p:LaunchBoxRoot="C:\Pfad\zu\LaunchBox"
+dotnet build launchbox-plugin/MarqueePiLaunchBox.csproj -c Release -p:LaunchBoxRoot="C:\Path\to\LaunchBox"
 ```
 
-Die fertige `MarqueePiLaunchBox.dll` gehört nach `LaunchBox\Plugins\Marquee-Pi` und liegt auch dem portablen Windows-Paket bei. Gegen LaunchBox 14.0.1.2 auf dem Arcade-PC wurde sie mit x64 ohne Warnungen gebaut; das Laden durch Big Box sowie Spielstart und Spielende wurden am Zielsystem erfolgreich geprüft.
+The finished `MarqueePiLaunchBox.dll` belongs in `LaunchBox\Plugins\Marquee-Pi` and is also included in the portable Windows package. It was built for x64 against LaunchBox 14.0.1.2 on the arcade PC without warnings; loading by Big Box as well as game start and game end were tested successfully on the target system.
 
-LaunchBox dokumentiert, dass `OnGameExited()` bei manchen Launchern, darunter Steam, unmittelbar nach dem Start ausgelöst werden kann. Solche Spiele brauchen später eine gesonderte Prozessüberwachung oder Zuordnung.
+LaunchBox documents that `OnGameExited()` can be triggered immediately after launch for some launchers, including Steam. Such games will later need separate process monitoring or mapping.

@@ -1,38 +1,43 @@
-# Netzwerkprotokoll v1
+# Network protocol v1
 
-Der Pi stellt eine HTTP-API auf dem konfigurierten Port bereit. Windows sendet bei jedem `/v1`-Aufruf den Header `X-Arcade-Token`. HTTP verschlüsselt weder Medien noch Token; ein Gerät im selben Netz könnte den Token mitlesen. Die API ist daher ausschließlich für eine direkte Punkt-zu-Punkt-Verbindung oder ein vertrauenswürdiges lokales Netz vorgesehen und darf nicht ins Internet weitergeleitet werden.
+The Pi provides an HTTP API on the configured port. Windows sends the `X-Arcade-Token` header with every `/v1` call. HTTP encrypts neither media nor the token; a device on the same network could read the token. The API is therefore intended exclusively for a direct point-to-point connection or a trusted local network and must not be forwarded to the internet.
 
-`allowed_client_ips` begrenzt die zulässigen Windows-Adressen; eine leere Liste bedeutet keine IP-Filterung. Empfohlen ist eine Liste mit der festen IP des Arcade-PCs. Alternativ oder zusätzlich wird `bind` auf die Pi-IP der direkten Ethernet-Schnittstelle gesetzt, damit der Dienst nicht an WLAN oder anderen Netzen lauscht. Die Vollbildseite unter `/ui/` ist unabhängig davon nur von `127.0.0.1` bzw. `::1` erreichbar.
+`allowed_client_ips` restricts the permitted Windows addresses; an empty list means no IP filtering. A list containing the fixed IP of the arcade PC is recommended. Alternatively or additionally, `bind` is set to the Pi IP of the direct Ethernet interface so that the service does not listen on Wi-Fi or other networks. Independently of this, the full-screen page at `/ui/` is reachable only from `127.0.0.1` or `::1`.
 
-## Operationen
+## Operations
 
-| Aufruf | Zweck |
+| Call | Purpose |
 | --- | --- |
-| `GET /v1/status` | Programmversion, Spiel und aktives Standardmedium lesen |
-| `POST /v1/game` | Spiel und Artwork setzen |
-| `POST /v1/heartbeat` | Laufendes Spiel während der Windows-Verbindung bestätigen |
-| `POST /v1/default` | Spiel beenden und Standardmedium zeigen |
-| `POST /v1/default-media` | Standardmedium hochladen und nach Prüfung aktivieren |
-| `POST /v1/boot-splash` | Statisches Boot-Bild hochladen und dauerhaft aktivieren |
-| `POST /v1/shutdown-media` | Shutdown-Bild oder -Video hochladen und dauerhaft aktivieren |
-| `POST /v1/gesture-config` | Zuordnung der vier Wischgesten speichern |
-| `GET /v1/gesture-events?after=N` | Gestenereignisse für Windows nach fortlaufender ID abrufen |
-| `POST /v1/reload` | Aktives Medium erneut laden und Browseranzeige aktualisieren |
-| `POST /v1/reboot` | Pi-Neustart anfordern |
-| `POST /v1/shutdown` | Pi-Shutdown anfordern |
+| `GET /v1/status` | Read program version, game and active default media |
+| `POST /v1/game` | Set game and artwork |
+| `POST /v1/heartbeat` | Confirm the running game while the Windows connection is up |
+| `POST /v1/default` | End the game and show the default media |
+| `POST /v1/default-media` | Upload default media and activate it after verification |
+| `POST /v1/boot-splash` | Upload a static boot image and activate it permanently |
+| `POST /v1/shutdown-media` | Upload a shutdown image or video and activate it permanently |
+| `POST /v1/gesture-config` | Save the assignment of the four swipes and the long press |
+| `POST /v1/language` | Set the language of the touch menu (`en` or `de`) |
+| `GET /v1/gesture-events?after=N` | Retrieve gesture events for Windows by sequential ID |
+| `POST /v1/reload` | Reload the active media and refresh the browser display |
+| `POST /v1/reboot` | Request a Pi restart |
+| `POST /v1/shutdown` | Request a Pi shutdown |
 
-`POST /v1/game` verwendet JSON. `title` ist erforderlich. `marquee`, `controls`, `box_art` und `logo` sind optional und enthalten jeweils `extension` und `base64`. Dateipfade werden nicht übertragen, weil Windows-Pfade auf dem Pi nicht verfügbar sind. Bilder liegen für die laufende Sitzung im RAM. PNG- und JPEG-Dateien werden unter Windows vor der Übertragung proportional auf höchstens 1600 Pixel Kantenlänge verkleinert. GIF und WebP werden unverändert übertragen, damit Animationen erhalten bleiben. Wenn 60 Sekunden lang kein Heartbeat kommt, kehrt der Pi zum lokalen Standardmedium zurück. Der Timeout ist konfigurierbar.
+`POST /v1/game` uses JSON. `title` is required. `marquee`, `controls`, `box_art` and `logo` are optional and each contain `extension` and `base64`. File paths are not transmitted because Windows paths are not available on the Pi. Images are held in RAM for the running session. PNG and JPEG files are scaled down proportionally on Windows to a maximum edge length of 1600 pixels before transmission. GIF and WebP are transmitted unchanged so that animations are preserved. If no heartbeat arrives for 60 seconds, the Pi returns to the local default media. The timeout is configurable.
 
-Die maximale HTTP-Anfrage beträgt 32 MiB. Der Windows-Sender reserviert davon 1 MiB für JSON, Titel und Base64-Rundung. Das gemeinsame Rohdatenbudget aller vier Artworks ist deshalb `(32 MiB - 1 MiB) * 3 / 4 = 23,25 MiB`. Änderungen an diesem Protokolllimit müssen in `pi/arcade_pi.py` und `windows/native/core.hpp` gemeinsam erfolgen.
+The maximum HTTP request size is 32 MiB. The Windows sender reserves 1 MiB of this for JSON, title and Base64 rounding. The shared raw data budget for all four artworks is therefore `(32 MiB - 1 MiB) * 3 / 4 = 23.25 MiB`. Changes to this protocol limit must be made in `pi/arcade_pi.py` and `windows/native/core.hpp` together.
 
-`POST /v1/gesture-config` verwendet ein JSON-Objekt mit den Gestenschlüsseln `swipe-down`, `swipe-up`, `swipe-right` und `swipe-left`. Gültige Aktionen sind `none`, `marquee`, `box_art`, `logo`, `controls`, `default` und `retroarch_menu`. Fehlende Schlüssel gelten als `none`; ungültige Werte werden abgewiesen. Die Zuordnung wird auf dem Pi dauerhaft gespeichert. Die lokale Seite meldet nur RetroArch-Gesten über `POST /ui/gesture`; Bildwechsel erfolgen direkt im Browser. Windows ruft `/v1/gesture-events?after=N` authentifiziert ab und erhält `instance_id` sowie eine Liste mit IDs. Bei Pi-Neustart ändert sich `instance_id`, damit Windows den Cursor zurücksetzt.
+`POST /v1/gesture-config` uses a JSON object with the gesture keys `swipe-down`, `swipe-up`, `swipe-right`, `swipe-left` and `long-press`. Valid actions are `none`, `marquee`, `box_art`, `logo`, `controls`, `default`, `retroarch_menu` and `touch_menu`. Missing swipe keys are treated as `none`, a missing `long-press` as `touch_menu` so that clients that only know the swipes keep the menu; invalid keys or values are rejected. The assignment is stored permanently on the Pi. The local page reports only RetroArch gestures via `POST /ui/gesture`; image changes and the touch menu are handled directly in the browser. Windows polls `/v1/gesture-events?after=N` with authentication and receives `instance_id` and a list of IDs. When the Pi restarts, `instance_id` changes so that Windows resets its cursor.
 
-`POST /v1/default-media` verwendet die Rohbytes der Datei. `X-File-Name` liefert die Endung. Die API prüft Typ und Größenlimit (derzeit 20 MiB); für MP4 muss `ffprobe` einen H.264-Videostream nachweisen. Die Datei wird erst nach vollständiger Prüfung dauerhaft aktiviert. Ein fehlgeschlagener Upload lässt das bisherige Medium aktiv.
+`POST /v1/language` takes `{"language": "en"}` or `{"language": "de"}`, stores it permanently and returns it as `language` in `/v1/status` and the local display state. The default is `en`. The Windows app sends it together with the gesture configuration, resolved from its own setting (which may follow the Windows display language).
 
-`POST /v1/boot-splash` verwendet dasselbe Rohdatenformat, akzeptiert aber nur PNG oder JPEG. `POST /v1/shutdown-media` akzeptiert die unterstützten Bild- und Animationsformate sowie H.264-MP4. Beim Shutdown wechselt die lokale Anzeige zuerst auf dieses Medium. Für ein Video wartet der Pi dessen ermittelte Dauer plus eine kurze Reserve, begrenzt auf 30 Sekunden, bevor `systemctl poweroff` ausgeführt wird.
+The touch menu uses these endpoints, which like all `/ui/` paths are reachable only from `127.0.0.1` or `::1` and need no token: `GET /ui/system` (addresses, connection of the Windows app, brightness, whether power commands are enabled), `POST /ui/brightness` with `{"percent": n}` (clamped to 5–100) and `POST /ui/power` with `{"action": "reboot"}` or `{"action": "poweroff"}`. Power requests are checked with polkit exactly like `/v1/reboot` and `/v1/shutdown`.
 
-Erfolgreiche Änderungen liefern JSON mit `ok: true`. Fehler liefern einen HTTP-Status und ein JSON-`error`. Neustart und Shutdown bestätigen den angenommenen Befehl, bevor die Pi-Verbindung endet.
+`POST /v1/default-media` uses the raw bytes of the file. `X-File-Name` provides the extension. The API checks the type and size limit (currently 20 MiB); for MP4, `ffprobe` must confirm an H.264 video stream. The file is activated permanently only after complete verification. A failed upload leaves the previous media active.
 
-## Wiederverbindung
+`POST /v1/boot-splash` uses the same raw data format but accepts only PNG or JPEG. `POST /v1/shutdown-media` accepts the supported image and animation formats as well as H.264 MP4. On shutdown, the local display switches to this media first. For a video, the Pi waits for its detected duration plus a short margin, capped at 30 seconds, before running `systemctl poweroff`.
 
-Das Windows-Tool merkt sich das laufende Spiel und sendet es nach einer wiederhergestellten Pi-Verbindung erneut. Der Pi zeigt ohne Verbindung sein lokal gespeichertes Standardmedium. Ein Netzwerkverlust löst keinen Pi-Shutdown aus, damit Windows neu gestartet werden kann.
+Successful changes return JSON with `ok: true`. Errors return an HTTP status and a JSON `error`. Restart and shutdown acknowledge the accepted command before the Pi connection ends.
+
+## Reconnection
+
+The Windows tool remembers the running game and sends it again after the Pi connection is restored. Without a connection, the Pi shows its locally stored default media. A network loss does not trigger a Pi shutdown, so that Windows can be restarted.

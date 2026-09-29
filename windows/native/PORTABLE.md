@@ -1,17 +1,17 @@
-# Marquee-Pi – portable Windows-Version
+# Marquee-Pi – portable Windows version
 
-1. ZIP vollständig in einen Ordner entpacken. `Marquee-Pi.exe` starten.
-2. Im Infobereich **Einstellungen…** öffnen und die Pi-Adresse und den API-Token eintragen. Der Knopf **Hilfe: Token erstellen** erklärt die Einrichtung am Pi.
-3. Das LaunchBox-Plugin aus `MarqueePiLaunchBox.dll` nach `LaunchBox/Plugins/Marquee-Pi/` kopieren. LaunchBox/Big Box danach neu starten.
+1. Unpack the ZIP completely into a folder. Start `Marquee-Pi.exe`.
+2. In the notification area, open **Settings…** and enter the Pi address and the API token. The **Help: create token** button explains the setup on the Pi.
+3. Copy the LaunchBox plugin `MarqueePiLaunchBox.dll` to `LaunchBox/Plugins/Marquee-Pi/`. Then restart LaunchBox/Big Box.
 
-Unter **Medien verwalten…** kann jede importierte Datei als Standardmedium oder Shutdown-Medium auf den Pi übertragen werden. Für den frühen Boot-Splash ist ein statisches PNG oder JPEG erforderlich. Das Shutdown-Medium darf auch ein GIF, WebP oder H.264-MP4 sein. Ein Video wird beim Ausschalten einmal abgespielt; nach spätestens 30 Sekunden fährt der Pi fort.
+Under **Manage media…**, each imported file can be transferred to the Pi as default media or shutdown media. A static PNG or JPEG is required for the early boot splash. The shutdown media may also be a GIF, WebP or H.264 MP4. A video is played once on shutdown; after 30 seconds at the latest, the Pi continues.
 
-Die Datei `portable.flag` aktiviert den portablen Modus. Marquee-Pi legt `Data/settings.ini` und `Data/media/` im selben Ordner an. Beim Kopieren des gesamten Ordners werden Einstellungen und Medien mitgenommen. Die INI enthält den Token im Klartext und sollte nicht veröffentlicht werden.
+The `portable.flag` file enables portable mode. Marquee-Pi creates `Data/settings.ini` and `Data/media/` in the same folder. When the entire folder is copied, settings and media are carried along. The INI contains the token in plain text and should not be published.
 
-Die EXE benötigt unter Windows 11 keine separat installierte .NET-Laufzeit und keinen Installer. Der optionale Autostart speichert den absoluten EXE-Pfad im Benutzerkonto; nach dem Verschieben des Ordners den Autostart im Einstellungsfenster erneut speichern.
+On Windows 11, the EXE needs no separately installed .NET runtime and no installer. The optional autostart stores the absolute EXE path in the user account; after moving the folder, save the autostart setting again in the settings window.
 
-Für den Raspberry Pi gilt die Installationsanleitung im Git-Repository. Pi-Adresse und Token müssen erreichbar und identisch mit der Pi-Konfiguration sein.
+For the Raspberry Pi, the installation guide in the Git repository applies. The Pi address and token must be reachable and identical to the Pi configuration.
 
-Für die Wischaktion „RetroArch-Menü öffnen“ kann im Einstellungsfenster zwischen Tastaturkürzel und lokalem Netzwerkbefehl gewählt werden. Für den Netzwerkbefehl in RetroArch `network_cmd_enable = "true"` setzen, den Port abgleichen (Standard 55355) und RetroArch neu starten.
+For the swipe action "Open RetroArch menu", the settings window lets you choose between keyboard shortcut and local network command. For the network command, set `network_cmd_enable = "true"` in RetroArch, match the port (default 55355) and restart RetroArch.
 
-Beim ersten Start nach dem Aktivieren der RetroArch-Netzwerkbefehle kann die Windows-Firewall nach Zugriff für `retroarch.exe` fragen. Marquee-Pi nutzt nur `127.0.0.1`: zunächst ohne Freigabe testen; falls nötig nur vertrauenswürdige private Netzwerke erlauben und „Öffentliche Netzwerke“ nicht auswählen.
+On the first start after enabling RetroArch network commands, Windows Firewall may ask for access for `retroarch.exe`. Marquee-Pi uses only `127.0.0.1`: test without permission first; if necessary, allow only trusted private networks and do not select "Public networks".

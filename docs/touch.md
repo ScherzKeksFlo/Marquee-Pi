@@ -1,40 +1,56 @@
-# Touchbedienung
+# Touch control
 
-Ein kurzer Tipp schaltet während eines Spiels zwischen Marquee und Steuerungsbelegung um, sofern eine Steuerungsgrafik vorhanden ist. Die vier Wischrichtungen werden im Windows-Infobereich unter **Einstellungen… → Wischgesten** unabhängig konfiguriert.
+A short tap switches between the marquee and the controls layout during a game, provided controls artwork is available. A long press opens the touch menu (see below). The four swipe directions and the long press are configured independently in the Windows notification area under **Settings… → Gestures**.
 
-| Geste | Fingerbewegung |
+| Gesture | Finger movement |
 | --- | --- |
-| `swipe-down` | Oben nach unten |
-| `swipe-up` | Unten nach oben |
-| `swipe-right` | Links nach rechts |
-| `swipe-left` | Rechts nach links |
+| `swipe-down` | Top to bottom |
+| `swipe-up` | Bottom to top |
+| `swipe-right` | Left to right |
+| `swipe-left` | Right to left |
+| `long-press` | Hold one finger still for about 0.8 s |
 
-## Verfügbare Aktionen
+## Available actions
 
-- **Keine Aktion:** Standardbelegung aller vier Gesten.
-- **Marquee anzeigen:** Spiel-Marquee, sonst das im Spielstart gewählte Banner.
-- **Box Art anzeigen:** Vorderseite der Box aus LaunchBox.
-- **LaunchBox-Logo anzeigen:** Clear Logo des Spiels aus LaunchBox.
-- **Steuerungsbelegung anzeigen:** vorhandene Arcade-Steuerungsgrafik.
-- **Standardanimation anzeigen:** auf dem Pi gespeichertes Standardmedium, auch während eines Spiels.
-- **RetroArch-Menü öffnen:** sendet die im Windows-Tool eingestellte Tastenkombination an das gerade aktive RetroArch-Fenster.
+- **No action:** Default assignment of the four swipes.
+- **Open touch menu on Pi:** Opens the touch menu described below. This is the default assignment of the long press and can be given to any gesture.
+- **Show marquee:** Game marquee, otherwise the banner chosen at game start.
+- **Show box art:** Front of the box from LaunchBox.
+- **Show LaunchBox logo:** Clear logo of the game from LaunchBox.
+- **Show controls layout:** Existing arcade controls artwork.
+- **Show default animation:** Default media stored on the Pi, even during a game.
+- **Open RetroArch menu:** Sends the key combination configured in the Windows tool to the currently active RetroArch window.
 
-Fehlt die gewählte Spielgrafik, erscheint stattdessen das Marquee; fehlt auch dieses, zeigt der Pi das Standardmedium mit Spieltitel. Die RetroArch-Aktion wirkt nur während eines aktiven Spiels und nur wenn RetroArch im Vordergrund ist. Die Tastenkombination lässt sich als Tastaturnamen eingeben, etwa `F1`, `Ctrl+F1`, `Shift+F1` oder `Ctrl+Shift+F1`; Gamepad-Tastenkombinationen werden nicht simuliert.
+If the selected game artwork is missing, the marquee appears instead; if that is also missing, the Pi shows the default media with the game title. The RetroArch action works only during an active game and only when RetroArch is in the foreground. The key combination can be entered as keyboard names, such as `F1`, `Ctrl+F1`, `Shift+F1` or `Ctrl+Shift+F1`; gamepad button combinations are not simulated.
 
-Die Windows-App speichert die Zuordnung pro Benutzer und überträgt sie an den Pi. Der Pi speichert sie ebenfalls, damit Bildaktionen nach einem Pi-Neustart bereitstehen. Nach einem Windows- oder Pi-Neustart synchronisiert die App die Konfiguration erneut. RetroArch-Aktionen benötigen die laufende Windows-App.
+The Windows app stores the assignment per user and transfers it to the Pi. The Pi also stores it so that image actions are available after a Pi restart. After a Windows or Pi restart, the app synchronizes the configuration again. RetroArch actions require the Windows app to be running.
 
-## Erkennung
+## Touch menu
 
-- Pro Berührung wird höchstens ein Ereignis beim Loslassen erzeugt.
-- Die längere Bewegungsachse bestimmt die Wischrichtung; kleine seitliche Abweichungen sind erlaubt.
-- Eine Bewegung oberhalb der Tippgrenze löst keinen Tippwechsel aus.
-- Nicht eindeutige, abgebrochene und gleichzeitige Mehrfinger-Eingaben bleiben ohne Aktion.
-- Bei gedrehtem Display gelten die Richtungen aus Sicht des Benutzers; die Displayausrichtung wird am Pi eingestellt.
+The touch menu is an overlay on the Pi display with these parts:
 
-## Abnahme am Gerät
+- **View:** Switch between Marquee, Box Art, Logo, Controls and Default. Views without artwork are greyed out, as is everything while no game runs.
+- **Brightness:** Steps of 10 percent, never below 5 percent so the display cannot go black. The value survives a Pi restart.
+- **Status:** Connection to the arcade PC, IP addresses of the Pi, running game and program version.
+- **System …:** A separate page with **Restart** and **Shut down**, each behind a confirmation. It uses the same polkit-checked path as the API and requires `power_commands_enabled`.
 
-1. Jede Richtung separat einer anderen Bildaktion zuweisen und die passende Ansicht prüfen.
-2. Geste ohne passende Spielgrafik prüfen: Marquee bzw. Standardmedium erscheint.
-3. RetroArch-Menütaste konfigurieren, ein RetroArch-Spiel starten und Geste prüfen.
-4. RetroArch verlassen und dieselbe Geste prüfen: Es wird keine Taste an Big Box gesendet.
-5. Pi und Windows-App neu starten und prüfen, ob die Einstellungen erhalten bleiben.
+The menu closes after 20 seconds without input. If no gesture is assigned to **Open touch menu on Pi**, brightness and restart can no longer be reached on the Pi; the Windows tool warns before saving such a configuration. The menu texts follow the language chosen in the Windows tool (**Settings… → General → Language**); English is used until Windows has reported a language.
+
+## Detection
+
+- At most one event per touch is generated, on release.
+- The longer axis of movement determines the swipe direction; small lateral deviations are allowed.
+- A movement above the tap threshold does not trigger a tap switch.
+- A long press needs one finger that stays within the tap distance for 0.8 s; its release then produces no tap. It fires once per touch and only if a real action is assigned.
+- Ambiguous, aborted and simultaneous multi-finger inputs result in no action.
+- With a rotated display, the directions apply from the user's point of view; the display orientation is set on the Pi.
+
+## Acceptance on the device
+
+1. Assign each direction separately to a different image action and check the matching view.
+2. Check a gesture without matching game artwork: the marquee or default media appears.
+3. Configure the RetroArch menu key, start a RetroArch game and check the gesture.
+4. Exit RetroArch and check the same gesture: no key is sent to Big Box.
+5. Restart the Pi and the Windows app and check whether the settings are retained.
+6. Assign **Open touch menu on Pi** to a swipe and long press to another action; check that the menu opens only on the swipe.
+7. Switch the language in the Windows tool and check that the menu texts change without restarting the Pi.

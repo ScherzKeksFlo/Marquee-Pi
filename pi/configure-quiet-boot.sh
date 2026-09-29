@@ -2,7 +2,7 @@
 set -eu
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "Dieses Skript muss als root ausgeführt werden." >&2
+  echo "This script must be run as root." >&2
   exit 1
 fi
 
@@ -10,7 +10,7 @@ CMDLINE=/boot/firmware/cmdline.txt
 BACKUP=/boot/firmware/cmdline.txt.marquee-pi-before-quiet-boot
 
 if [ ! -f "$CMDLINE" ]; then
-  echo "$CMDLINE wurde nicht gefunden." >&2
+  echo "$CMDLINE was not found." >&2
   exit 1
 fi
 
@@ -37,7 +37,7 @@ tokens.extend([
     "systemd.show_status=false", "rd.systemd.show_status=false",
 ])
 if not tokens or not any(token.startswith("root=") and len(token) > 5 for token in tokens):
-    raise SystemExit("Kernel-Befehlszeile ist leer oder enthält keinen root=-Eintrag; keine Änderung geschrieben.")
+    raise SystemExit("Kernel command line is empty or contains no root= entry; no changes written.")
 pending = path.with_name(path.name + ".marquee-pi-pending")
 with pending.open("w", encoding="utf-8") as stream:
     stream.write(" ".join(tokens) + "\n")
@@ -47,4 +47,4 @@ os.replace(pending, path)
 PY
 
 systemctl disable getty@tty1.service >/dev/null 2>&1 || true
-echo "Der stille Boot ist eingerichtet und wird nach dem nächsten Neustart aktiv."
+echo "Quiet boot has been configured and will take effect after the next restart."

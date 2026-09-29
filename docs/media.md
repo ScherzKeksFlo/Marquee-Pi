@@ -1,40 +1,40 @@
-# Medienverwaltung
+# Media management
 
-## Aufgabe des Windows-Tools
+## Role of the Windows tool
 
-Das Windows-Tool verwaltet eine gemeinsame Bibliothek eigener Medien. Es kann Dateien hinzufügen, eine Vorschau anzeigen und eine Datei als Standardmedium, Boot-Splash oder Shutdown-Medium auf den Pi übertragen. Eine Datei darf mehreren Rollen zugeordnet sein. Solange sie in mindestens einer Rolle aktiv ist, kann sie lokal erst nach Wahl eines Ersatzes gelöscht werden. Nach einem Upload meldet der Pi Formatfehler und Speicherprobleme sichtbar an Windows zurück.
+The Windows tool manages a shared library of custom media. It can add files, show a preview and transfer a file to the Pi as default media, boot splash or shutdown media. A file may be assigned to several roles. As long as it is active in at least one role, it can only be deleted locally after a replacement has been chosen. After an upload, the Pi visibly reports format errors and storage problems back to Windows.
 
-Der Pi hält das zuletzt aktivierte Standardmedium lokal vor. Damit erscheint es bereits beim Pi-Start, bevor Windows erreichbar ist. Ein neues Medium wird zunächst vollständig übertragen und geprüft; erst danach ersetzt es das aktive Medium. Bei fehlgeschlagenem Upload bleibt das bisherige Standardmedium erhalten.
+The Pi keeps the most recently activated default media locally. This makes it appear as soon as the Pi starts, before Windows is reachable. A new media file is first transferred completely and verified; only then does it replace the active media. If an upload fails, the existing default media is kept.
 
-## Start ohne Windows
+## Startup without Windows
 
-Die ausgewählte Datei und die Information, welche Datei aktiv ist, liegen dauerhaft auf dem Pi. Das Anzeigeprogramm startet beim Booten automatisch und lädt dieses Medium aus lokalem Speicher; es wartet dafür weder auf Netzwerk noch auf LaunchBox. Ein MP4 oder eine Animation beginnt in Endlosschleife, sobald die grafische Ausgabe bereit ist. Wenn die aktive Datei beschädigt oder nicht lesbar ist, erscheint ein mitgeliefertes lokales Ersatzbild.
+The selected file and the information about which file is active are stored permanently on the Pi. The display program starts automatically at boot and loads this media from local storage; it waits neither for the network nor for LaunchBox. An MP4 or animation starts in an endless loop as soon as the graphical output is ready. If the active file is corrupted or unreadable, a bundled local fallback image appears.
 
-Das statische Boot-Bild liegt ebenfalls dauerhaft auf dem Pi. Der Framebuffer zeigt es, bis der X11-Kiosk die Ausgabe übernimmt. Der Kernelstart wird mit den dokumentierten `cmdline.txt`-Optionen weitgehend ausgeblendet. Video und Animation starten erst mit Chromium; der frühe Splash akzeptiert deshalb nur PNG oder JPEG.
+The static boot image is also stored permanently on the Pi. The framebuffer shows it until the X11 kiosk takes over the output. The kernel startup is largely hidden with the documented `cmdline.txt` options. Video and animation only start with Chromium; the early splash therefore accepts only PNG or JPEG.
 
-Das Shutdown-Medium wird vor `systemctl poweroff` im bereits laufenden Kiosk gezeigt. Ein H.264-MP4 spielt einmal ab. Die ermittelte Videodauer plus eine kurze Reserve bestimmt die Wartezeit, begrenzt auf 30 Sekunden. Bei einem direkten Shutdown am Pi sorgt ein eigener systemd-Dienst für denselben Ablauf.
+The shutdown media is shown in the already running kiosk before `systemctl poweroff`. An H.264 MP4 plays once. The detected video duration plus a short margin determines the wait time, capped at 30 seconds. On a direct shutdown at the Pi, a dedicated systemd service ensures the same sequence.
 
-## Formate der ersten Version
+## Formats of the first version
 
-| Endung | Verwendung | Hinweise |
+| Extension | Use | Notes |
 | --- | --- | --- |
-| `.jpg`, `.jpeg` | Foto, statisches Logo, Boot-Splash | Keine Transparenz |
-| `.png` | Statisches Logo, Boot-Splash | Transparenz möglich |
-| `.gif` | Kurze Animation | Auflösung und Bildrate für Pi 3 B+ begrenzen |
-| `.webp` | Statisches Logo | Animiertes WebP erst nach Test am Pi freigeben |
-| `.mp4` | Video in Endlosschleife | H.264-Videostream; Audio wird ignoriert |
+| `.jpg`, `.jpeg` | Photo, static logo, boot splash | No transparency |
+| `.png` | Static logo, boot splash | Transparency possible |
+| `.gif` | Short animation | Limit resolution and frame rate for the Pi 3 B+ |
+| `.webp` | Static logo | Enable animated WebP only after testing on the Pi |
+| `.mp4` | Video in an endless loop | H.264 video stream; audio is ignored |
 
-Eine Dateiendung allein genügt nicht: Das Tool prüft den tatsächlichen Medientyp, bei MP4 auch den Videocodec, und meldet nicht unterstützte Dateien vor der Aktivierung. Im Prototyp gilt ein festes Limit von 20 MB pro Datei. Grenzen für Auflösung und Animationsdauer werden nach dem Gerätetest festgelegt. Der Zielbildschirm hat 800 × 480 Pixel; Medien werden proportional eingepasst, ohne standardmäßig etwas abzuschneiden. Videos werden beim Wechsel zu einem Spiel gestoppt und beim Rücksprung zum Standardmedium neu gestartet.
+A file extension alone is not enough: the tool checks the actual media type, and for MP4 also the video codec, and reports unsupported files before activation. The prototype has a fixed limit of 20 MB per file. Limits for resolution and animation duration will be defined after the device test. The target screen has 800 × 480 pixels; media is scaled proportionally to fit, without cropping anything by default. Videos are stopped when switching to a game and restarted when returning to the default media.
 
-APNG kann später ergänzt werden, falls animierte Transparenz gebraucht wird. SVG kann bei Bedarf beim Import in PNG umgewandelt werden. Für die erste Version sind zusätzliche Video-Container und H.265/VP9 nicht vorgesehen, da sie auf dem Pi 3 B+ keinen Vorteil für diesen Bildschirm bieten.
+APNG can be added later if animated transparency is needed. SVG can be converted to PNG on import if required. For the first version, additional video containers and H.265/VP9 are not planned, as they offer no advantage for this screen on the Pi 3 B+.
 
-## Persistenz und Schutz der SD-Karte
+## Persistence and SD card protection
 
-Ein optionales schreibgeschütztes Overlay-Dateisystem verwirft gewöhnliche Änderungen beim Neustart. Für vom Windows-Tool hochgeladene Standardmedien braucht der Pi deshalb einen ausdrücklich persistenten Speicherort, beispielsweise eine separate beschreibbare Datenpartition. Der Installationsprozess muss diesen Ort einrichten und prüfen, bevor Uploads freigegeben werden. Medienwechsel erfolgen atomar: neue Datei schreiben, prüfen, dann Verweis auf das aktive Medium ändern.
+An optional read-only overlay file system discards ordinary changes on restart. For default media uploaded by the Windows tool, the Pi therefore needs an explicitly persistent storage location, for example a separate writable data partition. The installation process must set up and verify this location before uploads are enabled. Media changes are atomic: write the new file, verify it, then change the reference to the active media.
 
-## Offene Gerätetests
+## Open device tests
 
-- Vorschau und Endlosschleife für GIF und H.264-MP4 auf dem tatsächlichen Pi 3 B+
-- Verhalten bei Touch-Eingaben während einer Animation
-- Upload und erneuter Pi-Start mit aktivem schreibgeschütztem Overlay
-- Rückfall auf das bisherige Standardmedium nach abgebrochenem Upload
+- Preview and endless loop for GIF and H.264 MP4 on the actual Pi 3 B+
+- Behavior on touch input during an animation
+- Upload and Pi restart with the read-only overlay active
+- Fallback to the previous default media after an aborted upload

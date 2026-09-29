@@ -1,53 +1,53 @@
 # Marquee-Pi
 
-Ein Begleitbildschirm für LaunchBox/Big Box auf Windows 11 und einen Raspberry Pi 3 B+ mit 7-Zoll-Touchdisplay (800 × 480).
+A companion display for LaunchBox/Big Box on Windows 11 and a Raspberry Pi 3 B+ with a 7-inch touch display (800 × 480).
 
-> Projektstatus: Pi-Anzeige und Windows-Taskleistenprogramm sind auf dem Zielsystem installiert. Ein realer Spielstart aus Big Box hat das passende Marquee angezeigt und nach Spielende wieder zur Standardanimation gewechselt. Die automatische Pi-Abschaltung wurde beim Herunterfahren über Big Box und über das Windows-Startmenü erfolgreich getestet.
+> Project status: The Pi display and the Windows tray program are installed on the target system. A real game launch from Big Box showed the matching marquee and switched back to the default animation when the game ended. Automatic Pi shutdown was tested successfully when shutting down via Big Box and via the Windows Start menu.
 
-## Funktionen
+## Features
 
-- Nach dem Einschalten zeigt der Pi ein lokal gespeichertes statisches Boot-Bild. Sobald der Kiosk bereit ist, lädt er ohne Windows-Verbindung das dauerhaft gespeicherte Standardlogo, Video oder die Animation.
-- Beim Spielstart sendet das Windows-Programm die Spielkennung und passende Grafiken an den Pi. Das Display zeigt ein Marquee, alternativ Banner oder Logo.
-- Ein kurzes Tippen schaltet während des Spiels zwischen Marquee und Control-Panel-Ansicht um. Vier Wischrichtungen (oben nach unten, unten nach oben, links nach rechts, rechts nach links) lassen sich im Windows-Tool unabhängig mit Bildansichten oder dem RetroArch-Menü belegen. Für RetroArch sind ein frei einstellbares Tastaturkürzel und ein lokaler Netzwerkbefehl wählbar. Beim Spielende erscheint wieder das Standardlogo.
-- Bei einem Windows-Neustart bleibt der Pi eingeschaltet; ein Verbindungsabbruch setzt nur die Anzeige zurück.
-- Ein Windows-Symbol im Infobereich zeigt den Verbindungsstatus und bietet Anzeige neu laden, Pi neu starten, Pi herunterfahren und Standardlogo anzeigen. Über **Medien verwalten…** lassen sich Standardmedium, Boot-Splash und Shutdown-Medium unabhängig auswählen und auf den Pi übertragen.
-- Beim vollständigen Herunterfahren über Big Box oder das Windows-Startmenü zeigt der Pi das hinterlegte Shutdown-Bild oder -Video und fährt danach selbstständig herunter. Danach kann die Funksteckdose manuell ausgeschaltet werden.
+- After power-on, the Pi shows a locally stored static boot image. As soon as the kiosk is ready, it loads the permanently stored default logo, video or animation without a Windows connection.
+- When a game starts, the Windows program sends the game identifier and matching artwork to the Pi. The display shows a marquee, or alternatively a banner or logo.
+- A short tap switches between the marquee and the control panel view during the game. Four swipe directions (top to bottom, bottom to top, left to right, right to left) can be assigned independently in the Windows tool to image views or the RetroArch menu. For RetroArch, a freely configurable keyboard shortcut and a local network command are available. When the game ends, the default logo appears again.
+- When Windows restarts, the Pi stays on; a lost connection only resets the display.
+- A Windows icon in the notification area shows the connection status and offers Reload display, Restart Pi, Shut down Pi and Show default logo. **Manage media…** lets you select the default media, boot splash and shutdown media independently and transfer them to the Pi.
+- On a full shutdown via Big Box or the Windows Start menu, the Pi shows the stored shutdown image or video and then shuts itself down. The wireless power socket can then be switched off manually.
 
-## Komponenten
+## Components
 
-| Ordner | Zweck |
+| Folder | Purpose |
 | --- | --- |
-| `windows/` | Natives C++-Tray-Tool mit Infobereich, Kommunikation und Abschaltsteuerung |
-| `launchbox-plugin/` | LaunchBox/Big-Box-Plugin für Spielstart und Spielende |
-| `pi/` | Vollbildanzeige, Touchbedienung und lokaler Empfänger |
-| `docs/` | Architektur, Protokoll, Installation und Tests |
+| `windows/` | Native C++ tray tool with notification area icon, communication and shutdown control |
+| `launchbox-plugin/` | LaunchBox/Big Box plugin for game start and game end |
+| `pi/` | Full-screen display, touch control and local receiver |
+| `docs/` | Architecture, protocol, installation and tests |
 
-Das portable Windows-Paket enthält EXE, Plugin-DLL, Anleitung und Lizenz. IP-Adressen, Installationspfade, Zugangsdaten und eigene Medien werden nicht fest eingebaut. Spielgrafiken und LaunchBox-Binärdateien werden nicht mitgeliefert.
+The portable Windows package contains the EXE, plugin DLL, instructions and license. IP addresses, installation paths, credentials and custom media are not hard-coded. Game artwork and LaunchBox binaries are not included.
 
-Die Windows-Pi-Verbindung verwendet HTTP. Auch der API-Token wird dabei unverschlüsselt übertragen. Marquee-Pi ist deshalb für eine direkte Punkt-zu-Punkt-Verbindung oder ein vertrauenswürdiges lokales Netz vorgesehen und darf nicht ins Internet weitergeleitet werden. Auf dem Pi sollte `allowed_client_ips` auf die IP des Arcade-PCs begrenzt oder `bind` auf die Adresse der direkten Netzwerkschnittstelle gesetzt werden.
+The Windows-to-Pi connection uses HTTP. The API token is also transmitted unencrypted. Marquee-Pi is therefore intended for a direct point-to-point connection or a trusted local network and must not be forwarded to the internet. On the Pi, `allowed_client_ips` should be restricted to the IP of the arcade PC, or `bind` should be set to the address of the direct network interface.
 
-## Schnellstart
+## Quick start
 
-1. [Raspberry Pi OS Lite installieren und Pi-Dienste einrichten](pi/INSTALL.md). Ein eigenes API-Token erzeugen und in der Pi-Konfiguration hinterlegen.
-2. Das portable Windows-Paket aus den GitHub-Releases entpacken. [Windows-Tool einrichten](windows/README.md) und Pi-Adresse sowie denselben Token eintragen.
-3. Die enthaltene LaunchBox-Plugin-DLL nach `LaunchBox\Plugins\Marquee-Pi\` kopieren und [LaunchBox/Big Box neu starten](launchbox-plugin/README.md).
-4. Unter **Medien verwalten…** ein Standardmedium, ein statisches PNG/JPEG als Boot-Splash und optional ein Shutdown-Medium festlegen.
-5. Ein Spiel starten und die Anzeige prüfen. Für die RetroArch-Menü-Wischgeste den [lokalen Netzwerkmodus und den möglichen Firewall-Dialog](windows/README.md) beachten.
+1. [Install Raspberry Pi OS Lite and set up the Pi services](pi/INSTALL.md). Generate your own API token and store it in the Pi configuration.
+2. Unpack the portable Windows package from the GitHub releases. [Set up the Windows tool](windows/README.md) and enter the Pi address and the same token.
+3. Copy the included LaunchBox plugin DLL to `LaunchBox\Plugins\Marquee-Pi\` and [restart LaunchBox/Big Box](launchbox-plugin/README.md).
+4. Under **Manage media…**, define a default media file, a static PNG/JPEG as the boot splash and optionally a shutdown media file.
+5. Start a game and check the display. For the RetroArch menu swipe gesture, note the [local network mode and the possible firewall dialog](windows/README.md).
 
-Der automatische Pi-Shutdown wurde sowohl beim Ausschalten über Big Box als auch über das normale Windows-Startmenü praktisch geprüft. Pi-Neustart und Pi-Shutdown über das Tray-Menü sind getrennte Funktionen.
+Automatic Pi shutdown was tested in practice both when shutting down via Big Box and via the regular Windows Start menu. Pi restart and Pi shutdown from the tray menu are separate functions.
 
-Beim ersten Zielsystem benötigte die über einen eigenen USB-Hub versorgte Displayplatine nach einem Kaltstart zusätzliche Zeit. Nach später erneut aufgetretener, sporadischer Nichterkennung wurde `bootcode_delay=10` zusammen mit einer festen DSI-Auswahl verwendet; das Testskript bietet zusätzlich einen Warmstart als Rückfalllösung. Details stehen in der [Pi-Installationsanleitung](pi/INSTALL.md).
+On the first target system, the display board, which is powered through its own USB hub, needed additional time after a cold start. After sporadic non-detection occurred again later, `bootcode_delay=10` was used together with a fixed DSI selection; the test script additionally offers a warm restart as a fallback. Details are in the [Pi installation guide](pi/INSTALL.md).
 
-## Hardware des ersten Zielsystems
+## Hardware of the first target system
 
-- Windows 11 mit LaunchBox/Big Box und RetroArch
+- Windows 11 with LaunchBox/Big Box and RetroArch
 - Raspberry Pi 3 B+
-- Raspberry Pi 7-Inch Touch Screen Display, 800 × 480
-- Direkte Netzwerkverbindung zwischen Windows und Pi
-- Gemeinsame Funksteckdose, nach dem Herunterfahren manuell ausgeschaltet
+- Raspberry Pi 7-inch Touch Screen Display, 800 × 480
+- Direct network connection between Windows and the Pi
+- Shared wireless power socket, switched off manually after shutdown
 
-Andere Pi-Modelle, Displays und Netzwerkadressen erfordern eine passende lokale Konfiguration; getestet wurde bislang die oben genannte Hardware.
+Other Pi models, displays and network addresses require a suitable local configuration; only the hardware listed above has been tested so far.
 
-## Entwicklung
+## Development
 
-Die Schnittstelle und die offenen Hardwareprüfungen stehen in [docs/architecture.md](docs/architecture.md). Formate und Upload-Regeln stehen in [docs/media.md](docs/media.md). Start- und Build-Schritte stehen in den README-Dateien der Komponenten; die Pi-Neuinstallation beschreibt [pi/INSTALL.md](pi/INSTALL.md). Der Quellcode steht unter der [MIT-Lizenz](LICENSE).
+The interface and the open hardware checks are described in [docs/architecture.md](docs/architecture.md). Formats and upload rules are described in [docs/media.md](docs/media.md). Start and build steps are in the README files of the components; the Pi reinstallation is described in [pi/INSTALL.md](pi/INSTALL.md). The source code is licensed under the [MIT license](LICENSE).

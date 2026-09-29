@@ -1,66 +1,66 @@
-# Architektur und Abnahmekriterien
+# Architecture and acceptance criteria
 
-## Zuständigkeiten
+## Responsibilities
 
-1. Das Pi-Programm startet beim Booten automatisch, lädt das dauerhaft auf dem Pi gespeicherte Standardmedium ohne Netzwerkverbindung und zeigt bei einem Dateifehler ein lokales Ersatzbild.
-2. Ein Windows-Programm stellt Verbindung, Status und das Menü im Infobereich bereit. Es sendet Bilddaten bzw. Befehle an den Pi.
-3. Ein LaunchBox/Big-Box-Plugin meldet Spielstart und Spielende an das Windows-Programm. Die Plugin-Schnittstelle stellt Bildtypen wie `Arcade - Marquee` und `Arcade - Controls Information` bereit.
-4. Die Windows-Abschaltsteuerung unterscheidet vollständiges Ausschalten von Neustart. Diese Unterscheidung darf nicht allein vom Netzwerkverlust abgeleitet werden.
+1. The Pi program starts automatically at boot, loads the default media permanently stored on the Pi without a network connection, and shows a local fallback image if a file error occurs.
+2. A Windows program provides the connection, status and the menu in the notification area. It sends image data and commands to the Pi.
+3. A LaunchBox/Big Box plugin reports game start and game end to the Windows program. The plugin interface provides image types such as `Arcade - Marquee` and `Arcade - Controls Information`.
+4. The Windows shutdown control distinguishes a full shutdown from a restart. This distinction must not be derived from the loss of the network connection alone.
 
-## Anzeigezustände
+## Display states
 
-| Zustand | Pi-Anzeige | Kurzes Tippen |
+| State | Pi display | Short tap |
 | --- | --- | --- |
-| Start / kein Spiel | Lokales Standardlogo oder Animation | Keine Änderung |
-| Spiel aktiv, Marquee vorhanden | Marquee | Zur Control-Panel-Ansicht wechseln, wenn vorhanden |
-| Spiel aktiv, kein Marquee | Banner oder Logo; sonst Standardbild | Zur Control-Panel-Ansicht wechseln, wenn vorhanden |
-| Control-Panel-Ansicht | Zum Spiel gehörende Steuerungsgrafik | Zur Spielgrafik zurückkehren |
-| Spielende | Standardmedium | Keine Änderung |
-| Windows-Verbindung unterbrochen | Nach Ablauf eines Timeouts Standardmedium | Keine Änderung |
+| Startup / no game | Local default logo or animation | No change |
+| Game active, marquee available | Marquee | Switch to the control panel view, if available |
+| Game active, no marquee | Banner or logo; otherwise default image | Switch to the control panel view, if available |
+| Control panel view | Controls artwork belonging to the game | Return to the game artwork |
+| Game end | Default media | No change |
+| Windows connection lost | Default media after a timeout expires | No change |
 
-Die Grafik wird proportional in 800 × 480 eingepasst. Abschneiden ist standardmäßig deaktiviert. Neue Spielereignisse verwerfen ältere Anzeigezustände. Nach einem erneuten Verbindungsaufbau synchronisiert Windows den aktuellen Zustand.
+The artwork is scaled proportionally to fit 800 × 480. Cropping is disabled by default. New game events discard older display states. After the connection is re-established, Windows synchronizes the current state.
 
-## Touch-Gesten
+## Touch gestures
 
-Das Pi-Programm erkennt ein kurzes Tippen und vier voneinander getrennte Wischgesten: oben nach unten, unten nach oben, links nach rechts und rechts nach links. Für jede erkannte Geste wird ein Ereignis mit Richtung und aktuellem Anzeigezustand erzeugt. Die Wischgesten werden im Windows-Tool einzeln zugeordnet. Bildaktionen verarbeitet der Pi lokal; RetroArch-Gesten meldet er an die Windows-App. Eine nicht zugeordnete Geste ändert die Anzeige nicht.
+The Pi program recognizes a short tap and four separate swipe gestures: top to bottom, bottom to top, left to right and right to left. For each recognized gesture, an event with the direction and the current display state is generated. The swipe gestures are assigned individually in the Windows tool. The Pi handles image actions locally; it reports RetroArch gestures to the Windows app. An unassigned gesture does not change the display.
 
-Die Erkennung nutzt Beginn, Bewegung und Ende einer einzelnen Berührung. Mindeststrecke, maximale Dauer und zulässige Querbewegung sollen konfigurierbar sein. Eine Wischbewegung darf kein Tippen auslösen; ein kurzer Tipp darf keine Wischbewegung auslösen. Mehrere gleichzeitige Berührungen werden zunächst ignoriert. Details und Abnahmekriterien stehen in [touch.md](touch.md).
+Detection uses the start, movement and end of a single touch. The minimum distance, maximum duration and permitted lateral movement should be configurable. A swipe must not trigger a tap; a short tap must not trigger a swipe. Multiple simultaneous touches are initially ignored. Details and acceptance criteria are in [touch.md](touch.md).
 
-## Standardmedium
+## Default media
 
-Das Windows-Tool verwaltet eigene Standardbilder und Animationen, zeigt eine Vorschau und überträgt das ausgewählte Medium zum Pi. Der Pi speichert das aktive Medium dauerhaft lokal, damit es schon vor dem Windows-Start sichtbar ist. Ein fehlgeschlagener Upload darf das bisherige Medium nicht ersetzen. Formate, Grenzen und der persistente Speicherort bei aktiviertem Overlay stehen in [media.md](media.md).
+The Windows tool manages its own default images and animations, shows a preview and transfers the selected media file to the Pi. The Pi stores the active media file permanently and locally so that it is visible even before Windows starts. A failed upload must not replace the existing media file. Formats, limits and the persistent storage location when the overlay is enabled are described in [media.md](media.md).
 
-## Pi-Steuerbefehle
+## Pi control commands
 
-- `reload`: Aktives Standardmedium aus dem lokalen Speicher neu laden, ohne Betriebssystem-Neustart.
-- `show-default`: Standardmedium anzeigen.
-- `reboot`: Pi sauber neu starten.
-- `shutdown`: Pi sauber herunterfahren. Wiederanlauf erfordert einen neuen Stromzyklus der Funksteckdose.
-- `status`: Erreichbarkeit, Programmversion, aktueller Zustand und aktives Spiel abfragen.
+- `reload`: Reload the active default media from local storage without an operating system restart.
+- `show-default`: Show the default media.
+- `reboot`: Restart the Pi cleanly.
+- `shutdown`: Shut the Pi down cleanly. Starting it again requires a new power cycle of the wireless power socket.
+- `status`: Query reachability, program version, current state and active game.
 
-Die konkrete Netzwerk-API steht in [protocol.md](protocol.md). Auf dem getesteten Pi regelt Polkit nur Reboot und Poweroff für den eigenen API-Dienstbenutzer. Sie bleibt auf die direkte Verbindung beschränkt und benötigt Authentifizierung. Lokale Zugangsdaten werden nicht in Git gespeichert.
+The concrete network API is described in [protocol.md](protocol.md). On the tested Pi, Polkit only permits reboot and power-off for the API service's own user. It remains restricted to the direct connection and requires authentication. Local credentials are not stored in Git.
 
-## Ausschalten
+## Shutdown
 
-Windows-Startmenü und Big-Box-Menü sollen denselben Vorgang auslösen: Pi herunterfahren, danach Windows herunterfahren, zuletzt die Funksteckdose manuell ausschalten. Bei Windows-Neustart darf kein Pi-Shutdown ausgelöst werden. Ein allgemeines Windows-Shutdown-Skript eignet sich nicht, weil es auch bei Neustarts läuft. Die Tray-App verarbeitet `WM_ENDSESSION` nur bei bestätigtem Sitzungsende ohne Logoff oder App-Neustart. Sie liest dann das jüngste User32-Ereignis 1074 aus dem Systemprotokoll, das seit App-Start und vor höchstens zwei Minuten geschrieben wurde. Bekannte Neustartbegriffe in mehreren Windows-Sprachen werden zuerst ausgeschlossen. Nur die eindeutig unterstützten Ausschalt-Typen `shutdown`, `power off`, `herunterfahren` und `ausschalten` senden einen Pi-Shutdown mit drei Sekunden Zeitlimit. Bei einer anderen Windows-Anzeigesprache, einem Neustart, einem fehlenden Ereignis oder einem Lesefehler bleibt der Pi sicherheitshalber eingeschaltet; der erkannte Typ steht dann in `shutdown.log`.
+The Windows Start menu and the Big Box menu should trigger the same sequence: shut down the Pi, then shut down Windows, and finally switch off the wireless power socket manually. No Pi shutdown may be triggered on a Windows restart. A general Windows shutdown script is not suitable because it also runs on restarts. The tray app handles `WM_ENDSESSION` only for a confirmed session end without logoff or app restart. It then reads the most recent User32 event 1074 from the system log that was written since the app started and at most two minutes ago. Known restart terms in several Windows languages are excluded first. Only the clearly supported power-off types `shutdown`, `power off`, `herunterfahren` and `ausschalten` send a Pi shutdown with a three-second time limit. With a different Windows display language, a restart, a missing event or a read error, the Pi stays on as a precaution; the detected type is then recorded in `shutdown.log`.
 
-## Kompatibilitätsnamen
+## Compatibility names
 
-Die sichtbare Anwendung und neue Dateien heißen Marquee-Pi. Die Named Pipe `ArcadePiDisplayGameEvents`, der HTTP-Header `X-Arcade-Token`, das Pi-Skript `arcade_pi.py` und die Installationspfade `/opt/arcade-pi-display` sowie `/var/lib/arcade-pi-display` bleiben während Protokollversion 1 absichtlich bestehen. Dadurch funktionieren ältere Plugin-Versionen und vorhandene Pi-Installationen weiter. Das Windows-Tool übernimmt außerdem einmalig Einstellungen aus `%LOCALAPPDATA%\ArcadePiDisplay`. Diese Kennungen werden frühestens mit einer neuen inkompatiblen Protokoll-Hauptversion entfernt.
+The visible application and new files are named Marquee-Pi. The named pipe `ArcadePiDisplayGameEvents`, the HTTP header `X-Arcade-Token`, the Pi script `arcade_pi.py` and the installation paths `/opt/arcade-pi-display` and `/var/lib/arcade-pi-display` intentionally remain during protocol version 1. This keeps older plugin versions and existing Pi installations working. The Windows tool also imports settings once from `%LOCALAPPDATA%\ArcadePiDisplay`. These identifiers will be removed no earlier than with a new, incompatible major protocol version.
 
-Ein Pi-Overlay-Dateisystem kann die SD-Karte zusätzlich gegen versehentliches frühes Abschalten schützen. Es ersetzt nicht den geordneten Ausschaltablauf. Lokale Konfiguration und Medien müssen vor Aktivierung des schreibgeschützten Overlays vorbereitet werden.
+A Pi overlay file system can additionally protect the SD card against accidental early power-off. It does not replace the orderly shutdown sequence. Local configuration and media must be prepared before the read-only overlay is enabled.
 
-## Vor Ort zu prüfen
+## To be checked on site
 
-- Pi-OS-Version und 32-/64-Bit-Architektur
-- Boottest mit ausgeschaltetem Windows: gespeichertes Standardmedium erscheint ohne Netzwerk; Video oder Animation startet nach Bereitstellung der grafischen Ausgabe
-- Tatsächliche Displayausrichtung und Touch-Koordinaten
-- Statische IP-Adressen oder feste Namen der direkten Verbindung
-- LaunchBox-Installationspfad, Version und vorhandene Bildtypen je Beispielspiel
-- Verhalten von Windows-Startmenü und Big-Box-Menü beim Ausschalten und Neustart
-- Zeit von Pi-Shutdown-Befehl bis zum sicheren Stillstand
-- Ob die Funksteckdose nach vollständigem Windows-Stillstand ausgeschaltet wird
+- Pi OS version and 32-/64-bit architecture
+- Boot test with Windows switched off: the stored default media appears without a network; video or animation starts once the graphical output is available
+- Actual display orientation and touch coordinates
+- Static IP addresses or fixed names of the direct connection
+- LaunchBox installation path, version and available image types per sample game
+- Behavior of the Windows Start menu and the Big Box menu on shutdown and restart
+- Time from the Pi shutdown command to safe standstill
+- Whether the wireless power socket is switched off after Windows has fully stopped
 
-## Community-Paket
+## Community package
 
-Release-Artefakte sollen Windows-App, Plugin, Pi-Installationspaket, Beispieldateien und Prüfsummen enthalten. Weder ROMs noch Spielgrafiken, Zugangsdaten oder LaunchBox-Binärdateien gehören ins Repository oder Release. Installation, Update, Deinstallation und Wiederherstellung nach Verbindungsabbruch müssen dokumentiert und getestet werden.
+Release artifacts should contain the Windows app, plugin, Pi installation package, sample files and checksums. Neither ROMs nor game artwork, credentials or LaunchBox binaries belong in the repository or release. Installation, update, uninstallation and recovery after a lost connection must be documented and tested.
