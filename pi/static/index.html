@@ -5,29 +5,58 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Marquee-Pi</title>
   <style>
+    /* Bundled fonts, the same as the Windows app (SIL Open Font License, see static/fonts). */
+    @font-face { font-family: "Silkscreen"; font-weight: 400; src: url(/ui/fonts/Silkscreen-Regular.ttf) format("truetype"); }
+    @font-face { font-family: "Chakra Petch"; font-weight: 400; src: url(/ui/fonts/ChakraPetch-Regular.ttf) format("truetype"); }
+    @font-face { font-family: "Chakra Petch"; font-weight: 600; src: url(/ui/fonts/ChakraPetch-SemiBold.ttf) format("truetype"); }
+    @font-face { font-family: "Chakra Petch"; font-weight: 700; src: url(/ui/fonts/ChakraPetch-Bold.ttf) format("truetype"); }
+    @font-face { font-family: "IBM Plex Mono"; font-weight: 400; src: url(/ui/fonts/IBMPlexMono-Regular.ttf) format("truetype"); }
+    @font-face { font-family: "IBM Plex Mono"; font-weight: 500; src: url(/ui/fonts/IBMPlexMono-Medium.ttf) format("truetype"); }
+
     html, body, #stage { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #050505; cursor: none; }
     #stage { display: flex; align-items: center; justify-content: center; touch-action: none; user-select: none; }
     #stage img, #stage video { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-    #name { position: absolute; inset: auto 1rem 1rem; color: white; text-align: center; font: 1.5rem sans-serif; text-shadow: 0 2px 8px black; pointer-events: none; }
-    #menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.72); font: 20px sans-serif; color: #f2f2f2; touch-action: manipulation; user-select: none; }
+    #name { position: absolute; inset: auto 1rem 1rem; color: white; text-align: center; font: 700 1.5rem "Chakra Petch", sans-serif; text-shadow: 0 2px 8px black; pointer-events: none; }
+
+    /* Touch menu in the look of the Windows app (arcade theme, dark). */
+    #menu {
+      --wbg: #0d0a1a; --pbg: #151028; --ibg: #1d1636; --line: rgba(180, 140, 255, 0.2);
+      --ink: #efeaff; --ink2: #b3a7d3; --pink: #ff3fd8; --cyan: #2ef2ff; --yel: #ffe45c;
+      --grn: #45ff9a; --red: #ff5a78; --onacc: #1a0016;
+      --gp: 0 0 0 1px rgba(255, 63, 216, 0.6), 0 0 18px rgba(255, 63, 216, 0.45);
+      --gc: 0 0 0 1px rgba(46, 242, 255, 0.45), 0 0 16px rgba(46, 242, 255, 0.25);
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(6, 3, 16, 0.6); font: 400 19px "Chakra Petch", sans-serif; color: var(--ink);
+      touch-action: manipulation; user-select: none;
+    }
     #menu[hidden] { display: none; }
-    #menu .panel { box-sizing: border-box; width: 96%; max-height: 96%; overflow: hidden; padding: 14px 18px; background: #1b1b1f; border: 1px solid #3a3a42; border-radius: 14px; }
-    #menu .head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 24px; font-weight: bold; }
-    #menu .head .title { flex: 1; }
+    #menu .panel { box-sizing: border-box; position: relative; width: 96%; max-height: 96%; overflow: hidden; background: var(--wbg); border-radius: 10px; box-shadow: var(--gp); }
+    #menu .head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 16px; background: var(--pbg); border-bottom: 1px solid var(--line); }
+    #menu .head .title { flex: 1; font: 400 20px "Silkscreen", monospace; letter-spacing: 0.02em; color: var(--cyan); text-shadow: 0 0 10px rgba(46, 242, 255, 0.7); }
     #menu button.system, #menu button.back { flex: 0 0 auto; min-width: 120px; }
-    #menu .row.big button { min-height: 96px; }
+    #menu .body { position: relative; padding: 4px 16px 16px; }
+    #menu .body::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.5; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 3px); }
+    #menu .row.big { margin-top: 12px; }
+    #menu .row.big button { min-height: 96px; font-size: 22px; }
     #menu .row.big .confirm { font-size: 22px; }
-    #menu .section { margin: 10px 0 4px; font-size: 15px; color: #9a9aa6; text-transform: uppercase; letter-spacing: 0.06em; }
+    #menu .section { margin: 12px 0 6px; font: 400 12px "Silkscreen", monospace; letter-spacing: 0.04em; color: var(--ink2); }
     #menu .row { display: flex; gap: 8px; align-items: center; }
-    #menu button { flex: 1; min-height: 56px; padding: 0 10px; font: inherit; color: inherit; background: #2c2c33; border: 2px solid #44444e; border-radius: 10px; }
-    #menu button:active { background: #45454f; }
-    #menu button[disabled] { opacity: 0.35; }
-    #menu button.selected { background: #1f5fbf; border-color: #5c9bff; }
-    #menu button.danger { border-color: #a04040; }
+    #menu button { flex: 1; min-height: 56px; padding: 0 10px; font: 600 18px "Chakra Petch", sans-serif; color: var(--ink); background: var(--ibg); border: 1px solid var(--line); border-radius: 6px; }
+    #menu button:active { background: var(--line); box-shadow: var(--gc); }
+    #menu button[disabled] { opacity: 0.45; }
+    #menu button.selected { background: var(--pink); border-color: var(--pink); color: var(--onacc); font-weight: 700; box-shadow: var(--gp); }
+    #menu button.danger { background: transparent; border-color: var(--red); color: var(--red); }
+    #menu button.danger:active { background: rgba(255, 90, 120, 0.16); box-shadow: none; }
+    #menu button.yes { background: var(--red); color: #fff; font-weight: 700; }
+    #menu button.yes:active { background: var(--red); box-shadow: 0 0 14px rgba(255, 90, 120, 0.5); }
     #menu button.close { flex: 0 0 56px; }
-    #menu .level { flex: 2; text-align: center; font-size: 22px; }
-    #menu .status { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; font-size: 18px; }
-    #menu .status span:nth-child(odd) { color: #9a9aa6; }
+    #menu .level { flex: 2; text-align: center; font: 500 24px "IBM Plex Mono", monospace; }
+    #menu .status { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; padding: 12px 14px; background: var(--pbg); border: 1px solid var(--line); border-radius: 8px; font-size: 17px; }
+    #menu .status span:nth-child(odd) { color: var(--ink2); }
+    #menu .status span:nth-child(even) { font: 400 15px "IBM Plex Mono", monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #menu .dot { display: inline-block; width: 9px; height: 9px; margin-right: 9px; border-radius: 50%; }
+    #menu .dot.ok { background: var(--grn); box-shadow: 0 0 8px var(--grn); }
+    #menu .dot.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
     #menu .confirm { flex: 3; text-align: center; }
   </style>
 </head>

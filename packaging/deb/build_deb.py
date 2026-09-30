@@ -121,7 +121,10 @@ def payload() -> dict[str, tuple[bytes, int]]:
         f"Upstream: {HOMEPAGE}\n"
         "Files: *\n"
         "The Marquee-Pi contributors license this package under the terms below.\n\n"
-        f"{licence}").encode("utf-8"))
+        f"{licence}\n"
+        "Files: opt/marquee-pi/static/fonts/*\n"
+        "Silkscreen, Chakra Petch and IBM Plex Mono are licensed under the SIL Open Font License 1.1;\n"
+        "the license texts are installed next to the fonts in /opt/marquee-pi/static/fonts/.\n").encode("utf-8"))
     changelog = gzip.compress(read(ROOT / "CHANGELOG.md"), mtime=0)
     add(f"{doc}/changelog.gz", changelog)
     return files

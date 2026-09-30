@@ -94,6 +94,8 @@ class DebPackageTests(unittest.TestCase):
     def test_expected_files_are_installed(self):
         for name in ("./opt/marquee-pi/marquee_pi.py", "./opt/marquee-pi/static/index.html",
                      "./opt/marquee-pi/static/app.js", "./opt/marquee-pi/static/gesture.js",
+                     "./opt/marquee-pi/static/fonts/Silkscreen-Regular.ttf",
+                     "./opt/marquee-pi/static/fonts/OFL-silkscreen.txt",
                      "./usr/lib/systemd/system/marquee-pi-api.service",
                      "./usr/lib/systemd/system/marquee-pi-kiosk.service",
                      "./usr/lib/systemd/system/marquee-pi-boot-splash.service",
@@ -119,7 +121,7 @@ class DebPackageTests(unittest.TestCase):
     def test_text_files_use_lf_line_endings(self):
         for source in (self.data, self.control):
             for name, (member, data) in source.items():
-                if member.isfile() and not name.endswith(".gz"):
+                if member.isfile() and not name.endswith((".gz", ".ttf")):
                     self.assertNotIn(b"\r", data, f"{name} contains CR")
 
     def test_units_point_at_installed_paths(self):
