@@ -20,7 +20,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-APP_VERSION = "1.0.0-beta.1"
+APP_VERSION = "1.0.0-beta.2"
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
 MAX_MEDIA_BYTES = 20 * 1024 * 1024
 SUPPORTED = {

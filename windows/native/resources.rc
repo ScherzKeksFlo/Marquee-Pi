@@ -28,7 +28,7 @@ BEGIN
       VALUE "InternalName", "Marquee-Pi"
       VALUE "OriginalFilename", "Marquee-Pi.exe"
       VALUE "ProductName", "Marquee-Pi"
-      VALUE "ProductVersion", "1.0.0-beta.1"
+      VALUE "ProductVersion", "1.0.0-beta.2"
     END
   END
   BLOCK "VarFileInfo"

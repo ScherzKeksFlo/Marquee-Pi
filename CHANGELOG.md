@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-beta.2
+
+Follows `1.0.0-beta.1`. It is tested on the same single setup (Raspberry Pi 3 B+ with the 7" DSI touch display on Raspberry Pi OS Trixie, Windows 11 arcade PC with LaunchBox/Big Box), not yet on others.
 
 ### Highlights
 
@@ -15,6 +17,20 @@
 - Saving keeps the settings window open and confirms with a message.
 - After the Pi was unreachable, the next status poll happens at once instead of after up to five seconds; the Windows tool no longer sends the running game twice when it first sees a Pi, and resends it when settings change during the send.
 - The Windows tool's Pi traffic now lives in `PiSync` with a scripted fake Pi in the tests.
+
+### Upgrading
+
+- Update the Windows app, the LaunchBox plugin and the Pi program together; the plugin and the app share the named pipe, and Core and ROM need all three.
+- Pi: `sudo apt install ./marquee-pi_*_all.deb` keeps the configuration, token and media. A manual installation also copies `static/fonts/` together with `marquee_pi.py` and the other files in `static/`.
+- Windows: your `settings.ini` keeps working; the new `Theme` and `Navigation` keys are added the next time you save.
+
+### Known limitations
+
+- Beta: expect rough edges, especially outside the tested hardware.
+- The buttons of the new Windows windows cannot be reached with the keyboard; Tab moves between the text fields, Enter saves and Esc cancels.
+- The dashboard preview shows the game's marquee file or the default media file, not a live copy of the Pi display.
+- The Core row needs RetroArch to be started with `-L` in the LaunchBox command line; other emulators show only the ROM.
+- Everything from `1.0.0-beta.1` still applies: intermittent DSI detection at boot on the test Pi, WebP thumbnails depend on the Windows WebP extension, and the HTTP API is unencrypted (direct or trusted network only).
 
 ## 1.0.0-beta.1
 
