@@ -47,22 +47,25 @@ void PiSync::tick() {
         copy = current; now = game; version = gameVersion;
         dirty = gestureDirty; sync = needsSync; reset = pendingDefault;
     }
-    if (cycle % 7 == 0) {
+    const bool statusCycle = cycle % 7 == 0;
+    if (statusCycle || statusDown) {
         try {
             auto response = transport.request(copy, L"GET", L"/v1/status");
             auto status = mini::parse(response.body);
-            online = true;
-            if (events.status) events.status(true, status.get("game_title").value(""));
+            const bool recovered = statusDown;
+            online = true; statusDown = false;
+            if (events.status && (statusCycle || recovered)) events.status(true, status.get("game_title").value(""));
         } catch (...) {
-            online = false;
-            if (events.status) events.status(false, "");
+            const bool wasDown = statusDown;
+            online = false; statusDown = true;
+            if (events.status && (statusCycle || !wasDown)) events.status(false, "");
             std::lock_guard<std::mutex> guard(mutex);
             gestureDirty = true;
             if (game) needsSync = true;
         }
     }
     if (online && copy.configured()) {
-        if (cycle % 7 == 0 && now && ++heartbeat % 3 == 0) {
+        if (statusCycle && now && ++heartbeat % 3 == 0) {
             try { transport.request(copy, L"POST", L"/v1/heartbeat"); } catch (...) {}
         }
         try {

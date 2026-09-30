@@ -72,6 +72,7 @@ private:
     bool cursorReady = false;
     int cycle = 0, heartbeat = 0;
     bool online = false;
+    bool statusDown = false;  // the last status poll failed: poll every tick until it works
 
     void post(const std::wstring& path, int timeoutMs = 8000);
 };

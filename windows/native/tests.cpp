@@ -190,7 +190,7 @@ void piSyncTests() {
         assert(pi.count(L"/v1/game") == 1);
         assert(pi.calls.back().path.rfind(L"/v1/gesture-events", 0) == 0);
     }
-    // Offline Pi: nothing is sent, and the Pi is only noticed again on the next status cycle (7).
+    // Offline Pi: nothing is sent, but the status is polled every tick so a return is noticed at once.
     {
         FakePi pi;
         bool offline = true;
@@ -202,11 +202,13 @@ void piSyncTests() {
         sync.gameStarted(piGame());
         ticks(sync, 1);
         assert(pi.calls.size() == 1 && pi.count(L"/v1/game") == 0);
+        pi.forget();
+        offline = true;
+        ticks(sync, 3);
+        assert(pi.count(L"/v1/status") == 3 && pi.calls.size() == 3);
         offline = false;
         pi.forget();
-        ticks(sync, 6);  // cycles 1..6: no status poll, still considered offline
-        assert(pi.calls.empty());
-        ticks(sync, 1);  // cycle 7: status succeeds, the pending game goes out
+        ticks(sync, 1);  // status succeeds, the pending game goes out
         assert(pi.count(L"/v1/status") == 1 && pi.count(L"/v1/game") == 1);
     }
     // Game exit: /v1/default once, then quiet.
@@ -355,6 +357,24 @@ void piSyncTests() {
         assert(pi.count(L"/v1/default") == 0 && pi.count(L"/v1/game") == 0);
         sync.rebootPi(); sync.reloadDisplay(); sync.shutdownPi(3000);
         assert(pi.count(L"/v1/reboot") == 1 && pi.count(L"/v1/reload") == 1 && pi.count(L"/v1/shutdown") == 1);
+    }
+    // An offline Pi is reported once, then again on every status cycle; recovery is reported at once.
+    {
+        FakePi pi;
+        bool offline = true;
+        pi.handler = [&](const FakePi::Call&) -> HttpResult {
+            if (offline) throw std::runtime_error("unreachable");
+            return {};
+        };
+        std::vector<bool> seen;
+        PiSyncEvents events;
+        events.status = [&](bool connected, const std::string&) { seen.push_back(connected); };
+        PiSync sync(piSettings(), pi, events);
+        ticks(sync, 8);  // cycles 0..7
+        assert((seen == std::vector<bool>{false, false}));
+        offline = false;
+        ticks(sync, 1);
+        assert((seen == std::vector<bool>{false, false, true}));
     }
     // Status events carry the Pi's game title (empty for the default media).
     {
