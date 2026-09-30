@@ -24,6 +24,23 @@ Settings PiSync::settings() const {
     std::lock_guard<std::mutex> guard(mutex);
     return current;
 }
+PiDisplay PiSync::piDisplay() const {
+    std::lock_guard<std::mutex> guard(mutex);
+    return shown;
+}
+static PiDisplay parseDisplay(const mini::Json& status) {
+    PiDisplay result;
+    const auto& block = status.get("display");
+    if (block.type != mini::Json::Object) return result;
+    result.known = true;
+    result.width = int(std::max<int64_t>(0, block.get("width").integer()));
+    result.height = int(std::max<int64_t>(0, block.get("height").integer()));
+    if (block.get("touch").type == mini::Json::Bool) result.touch = block.get("touch").boolean;
+    result.cover = block.get("fit").value() == "cover";
+    result.model = block.get("pi_model").value();
+    result.output = block.get("output").value();
+    return result;
+}
 bool PiSync::inGame() const {
     std::lock_guard<std::mutex> guard(mutex);
     return game.has_value();
@@ -61,6 +78,12 @@ void PiSync::tick() {
             auto status = mini::parse(response.body);
             const bool recovered = statusDown;
             online = true; statusDown = false;
+            const PiDisplay display = parseDisplay(status);
+            {
+                std::lock_guard<std::mutex> guard(mutex);
+                shown = display;
+            }
+            if (events.display) events.display(display);
             if (events.status && (statusCycle || recovered))
                 events.status(true, status.get("game_title").value(""), latency);
         } catch (...) {
@@ -94,7 +117,8 @@ void PiSync::tick() {
                 if (gameVersion == version) pendingDefault = false;
             } else if (sync && now) {
                 try {
-                    const std::string payload = gamePayload(*now);
+                    const PiDisplay display = piDisplay();
+                    const std::string payload = gamePayload(*now, artworkEdgeFor(display.width, display.height));
                     for (const auto& problem : takeArtworkErrors())
                         if (events.artworkSkipped) events.artworkSkipped(problem);
                     const auto sendStarted = std::chrono::steady_clock::now();

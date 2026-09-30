@@ -154,8 +154,16 @@
     X(TagLive, L"LIVE", L"LIVE") \
     X(TagOffline, L"OFFLINE", L"OFFLINE") \
     X(NoSignal, L"No signal", L"Kein Signal") \
-    X(CaptionMarquee, L"Marquee for %ls · 800 × 480 · tap on the Pi switches to the controls view", \
-      L"Marquee für %ls · 800 × 480 · Tippen am Pi wechselt zur Steuerungsansicht") \
+    X(CaptionMarquee, L"Marquee for %ls · %d × %d · tap on the Pi switches to the controls view", \
+      L"Marquee für %ls · %d × %d · Tippen am Pi wechselt zur Steuerungsansicht") \
+    X(CaptionMarqueeViewOnly, L"Marquee for %ls · %d × %d", L"Marquee für %ls · %d × %d") \
+    X(DashSubtitleFormat, L"%ls · %d × %d · %ls", L"%ls · %d × %d · %ls") \
+    X(DashSubtitleNoSize, L"%ls · %ls", L"%ls · %ls") \
+    X(DisplayTouch, L"touch", L"Touch") \
+    X(DisplayViewOnly, L"view only", L"nur Anzeige") \
+    X(GesturesNoTouch, \
+      L"This display has no touch, so gestures are not available here. The marquee is controlled from Windows.", \
+      L"Dieses Display hat kein Touch, daher gibt es hier keine Gesten. Das Marquee wird von Windows aus gesteuert.") \
     X(CaptionDefaultMedia, L"Default media is showing · %ls", L"Standardmedium wird angezeigt · %ls") \
     X(CaptionOffline, L"Showing whatever the Pi last displayed. It keeps the default media locally.", \
       L"Zeigt, was der Pi zuletzt angezeigt hat. Das Standardmedium liegt lokal auf dem Pi.") \
@@ -202,8 +210,11 @@
     X(MediaGrid, L"Grid", L"Raster") \
     X(MediaListView, L"List", L"Liste") \
     X(MediaSubline, \
-      L"JPG, PNG, GIF, WebP and H.264 MP4 up to 20 MB. Media is scaled to fit 800 × 480 without cropping.", \
-      L"JPG, PNG, GIF, WebP und H.264-MP4 bis 20 MB. Medien werden ohne Zuschnitt auf 800 × 480 eingepasst.") \
+      L"JPG, PNG, GIF, WebP and H.264 MP4 up to 20 MB. Media is scaled to fit %d × %d without cropping.", \
+      L"JPG, PNG, GIF, WebP und H.264-MP4 bis 20 MB. Medien werden ohne Zuschnitt auf %d × %d eingepasst.") \
+    X(MediaSublineCover, \
+      L"JPG, PNG, GIF, WebP and H.264 MP4 up to 20 MB. Media fills the %d × %d display; the edges may be cropped.", \
+      L"JPG, PNG, GIF, WebP und H.264-MP4 bis 20 MB. Medien füllen das Display mit %d × %d; die Ränder können abgeschnitten werden.") \
     X(UploadingTo, L"Uploading to Pi · %d%%", L"Upload zum Pi · %d %%") \
     X(UploadErrorBody, L"The Pi rejected %ls: %ls The previous %ls stays active.", \
       L"Der Pi hat %ls abgelehnt: %ls Das bisherige %ls bleibt aktiv.") \

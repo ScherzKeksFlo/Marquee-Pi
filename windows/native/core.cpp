@@ -158,7 +158,7 @@ std::string base64(const std::string& data) {
     while (!result.empty() && result.back() == '\0') result.pop_back();
     return result;
 }
-std::string scaledArtwork(const std::wstring& path, const std::string& ext, const std::string& original) {
+std::string scaledArtwork(const std::wstring& path, const std::string& ext, const std::string& original, int maxEdge) {
     ComScope com;
     if (!com.available()) return original;
     ComPtr<IWICImagingFactory> factory;
@@ -170,8 +170,8 @@ std::string scaledArtwork(const std::wstring& path, const std::string& ext, cons
     ComPtr<IWICBitmapFrameDecode> source;
     if (FAILED(decoder->GetFrame(0, source.out()))) return original;
     UINT width = 0, height = 0;
-    if (FAILED(source->GetSize(&width, &height)) || !width || !height || std::max(width, height) <= 1600) return original;
-    const double scale = 1600.0 / double(std::max(width, height));
+    if (FAILED(source->GetSize(&width, &height)) || !width || !height || std::max(width, height) <= UINT(maxEdge)) return original;
+    const double scale = double(maxEdge) / double(std::max(width, height));
     const UINT scaledWidth = std::max(1u, UINT(std::lround(width * scale)));
     const UINT scaledHeight = std::max(1u, UINT(std::lround(height * scale)));
     ComPtr<IWICBitmapScaler> scaler;
@@ -215,7 +215,7 @@ std::vector<std::string>& artworkErrors() {
     thread_local std::vector<std::string> errors;
     return errors;
 }
-mini::Json artwork(const std::wstring& path, size_t& budget) {
+mini::Json artwork(const std::wstring& path, size_t& budget, int maxEdge) {
     if (path.empty() || !fileExists(path)) return {};
     std::string ext = lower(toUtf8(fs::path(path).extension().wstring()));
     if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".gif" && ext != ".webp") return {};
@@ -223,7 +223,7 @@ mini::Json artwork(const std::wstring& path, size_t& budget) {
         auto length = fs::file_size(fs::path(path));
         if (length > 20 * 1024 * 1024 || length > budget) return {};
         std::string bytes = readFile(path);
-        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") bytes = scaledArtwork(path, ext, bytes);
+        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") bytes = scaledArtwork(path, ext, bytes, maxEdge);
         if (bytes.size() > 20 * 1024 * 1024 || bytes.size() > budget) return {};
         budget -= bytes.size();
         mini::Json item = mini::Json::object();
@@ -540,14 +540,18 @@ std::vector<std::string> takeArtworkErrors() {
     taken.swap(artworkErrors());
     return taken;
 }
-std::string gamePayload(const GameMessage& game) {
+int artworkEdgeFor(int displayWidth, int displayHeight) {
+    const int longest = std::max(displayWidth, displayHeight);
+    return std::clamp(longest, ARTWORK_DEFAULT_EDGE, ARTWORK_MAX_EDGE);
+}
+std::string gamePayload(const GameMessage& game, int maxEdge) {
     size_t budget = MARQUEE_PI_ARTWORK_BUDGET_BYTES;
     mini::Json body = mini::Json::object();
     body["title"] = mini::Json::str(toUtf8(game.title.empty() ? L"Game" : game.title));
-    body["marquee"] = artwork(game.marquee, budget);
-    body["controls"] = artwork(game.controls, budget);
-    body["box_art"] = artwork(game.boxArt, budget);
-    body["logo"] = artwork(game.logo, budget);
+    body["marquee"] = artwork(game.marquee, budget, maxEdge);
+    body["controls"] = artwork(game.controls, budget, maxEdge);
+    body["box_art"] = artwork(game.boxArt, budget, maxEdge);
+    body["logo"] = artwork(game.logo, budget, maxEdge);
     if (!game.core.empty()) body["core"] = mini::Json::str(toUtf8(game.core));
     if (!game.rom.empty()) body["rom"] = mini::Json::str(toUtf8(game.rom));
     return body.dump();

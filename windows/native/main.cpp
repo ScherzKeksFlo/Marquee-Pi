@@ -23,6 +23,7 @@ constexpr UINT WM_STATUS = WM_APP + 2;
 constexpr UINT WM_GAME = WM_APP + 3;
 constexpr UINT WM_APP_HOTKEY = WM_APP + 4;
 constexpr UINT WM_ERROR = WM_APP + 5;
+constexpr UINT WM_PIDISPLAY = WM_APP + 6;
 constexpr wchar_t PIPE_NAME[] = L"\\\\.\\pipe\\MarqueePiGameEvents";
 constexpr int ICON_CONNECTED = 101, ICON_DISCONNECTED = 102;
 struct StatusUpdate { bool connected; std::wstring title; int latencyMs; };
@@ -312,6 +313,10 @@ PiSyncEvents App::syncEvents() {
         auto* update = new StatusUpdate{isConnected, isConnected ? shown : std::wstring(), latencyMs};
         if (!PostMessageW(hwnd, WM_STATUS, 0, (LPARAM)update)) delete update;
     };
+    events.display = [this](const PiDisplay& display) {
+        auto* copy = new PiDisplay(display);
+        if (!PostMessageW(hwnd, WM_PIDISPLAY, 0, (LPARAM)copy)) delete copy;
+    };
     events.retroArchMenu = [this] { PostMessageW(hwnd, WM_APP_HOTKEY, 0, 0); };
     events.gameSent = [](size_t bytes, int ms) {
         logEvent(LogLevel::Info, "api", fmt(Str::LogGameSent, int((bytes + 1023) / 1024), ms));
@@ -408,6 +413,19 @@ static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) 
     case WM_STATUS: {
         auto* status = (StatusUpdate*)lp;
         app->setStatus(*status); delete status; return 0;
+    }
+    case WM_PIDISPLAY: {
+        auto* display = (PiDisplay*)lp;
+        const bool changed = display->known != app->st.display.known || display->width != app->st.display.width ||
+                             display->height != app->st.display.height || display->touch != app->st.display.touch ||
+                             display->cover != app->st.display.cover || display->model != app->st.display.model;
+        app->st.display = *display;
+        delete display;
+        if (changed) {
+            ThumbCache::instance().setRatio(app->st.display.ratio());
+            ui::settingsRefresh();
+        }
+        return 0;
     }
     case WM_GAME: {
         auto* game = (GameMessage*)lp;

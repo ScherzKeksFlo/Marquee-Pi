@@ -72,7 +72,10 @@ HttpResult piRequest(const Settings& settings, const std::wstring& method,
                      const std::wstring& contentType = L"",
                      const std::wstring& extraHeader = L"", int timeoutMs = 8000,
                      const std::function<void(size_t sent, size_t total)>& progress = nullptr);
-std::string gamePayload(const GameMessage& game);
+// Longest side of artwork sent to the Pi: 1600 px unless the Pi reports a bigger display.
+inline constexpr int ARTWORK_DEFAULT_EDGE = 1600, ARTWORK_MAX_EDGE = 3840;
+int artworkEdgeFor(int displayWidth, int displayHeight);
+std::string gamePayload(const GameMessage& game, int maxEdge = ARTWORK_DEFAULT_EDGE);
 // Reasons why artwork was left out of the last payloads built on this thread; clears the list.
 std::vector<std::string> takeArtworkErrors();
 std::vector<std::string> gameWarnings(const std::string& response);

@@ -24,11 +24,30 @@ struct WinHttpTransport : PiTransport {
     }
 };
 
+// The screen of the Pi as it reports it in /v1/status. Older Pis send nothing: known stays false and
+// the windows fall back to 800 x 480 with touch, the display the project started with.
+struct PiDisplay {
+    bool known = false;   // the Pi sent a display block
+    int width = 0, height = 0;  // physical pixels; 0 until the kiosk page reported them
+    bool touch = true;    // false: a view-only display
+    bool cover = false;   // picture fit: cover (crops) instead of contain
+    std::string model;    // "Raspberry Pi 3 Model B Plus Rev 1.3", may be empty
+    std::string output;   // "HDMI-1"
+
+    bool sizeKnown() const { return width > 0 && height > 0; }
+    int shownWidth() const { return sizeKnown() ? width : 800; }
+    int shownHeight() const { return sizeKnown() ? height : 480; }
+    // height / width, the ratio the previews are drawn with
+    double ratio() const { return double(shownHeight()) / double(shownWidth()); }
+};
+
 // What PiSync reports back. Both callbacks run on the thread that calls tick(), never
 // while the internal lock is held.
 struct PiSyncEvents {
     // title is empty while the Pi shows its default media; latencyMs is -1 when offline.
     std::function<void(bool connected, const std::string& title, int latencyMs)> status;
+    // Every status poll that succeeded, with what the Pi says about its display.
+    std::function<void(const PiDisplay& display)> display;
     std::function<void()> retroArchMenu;
     // A game was accepted by the Pi: request size and round trip.
     std::function<void(size_t bytes, int ms)> gameSent;
@@ -56,6 +75,7 @@ public:
 
     Settings settings() const;
     bool inGame() const;
+    PiDisplay piDisplay() const;
 
     // One polling cycle. The caller sleeps between cycles (about 750 ms).
     void tick();
@@ -66,6 +86,7 @@ private:
 
     mutable std::mutex mutex;
     Settings current;
+    PiDisplay shown;
     std::optional<GameMessage> game;
     uint64_t gameVersion = 0, configVersion = 0;
     bool needsSync = false, pendingDefault = false, gestureDirty = true;

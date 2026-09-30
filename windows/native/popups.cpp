@@ -288,7 +288,9 @@ public:
         c.text(text, RectF(32, 10, w - 46, 20), Face::BodyBold, 13, p.ink);
 
         const std::wstring name = roleFile(L"active-media.txt");
-        const RectF thumb(14, 40, 64, 38.4f);
+        const float ratio = float(status.display.ratio());
+        const float thumbH = std::min(38.4f, 64.f * ratio), thumbW = thumbH / ratio;
+        const RectF thumb(14, 40 + (38.4f - thumbH) / 2, thumbW, thumbH);
         c.fillRound(thumb, 4, p.ibg);
         if (!name.empty()) {
             const std::wstring path = std::filesystem::path(mediaDirectory()) / name;

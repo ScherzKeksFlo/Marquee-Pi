@@ -556,6 +556,23 @@ public:
         c.strokeRound(r, radius, outline);
     }
 
+    // Previews follow the real display: height / width as the Pi reported it (5:3 until it does).
+    double ratio() const { return host.status().display.ratio(); }
+    // The largest thumbnail with that ratio that fits into maxWidth x maxHeight.
+    Gdiplus::SizeF thumbSize(float maxWidth, float maxHeight) const {
+        const float r = float(ratio());
+        const float h = std::min(maxHeight, maxWidth * r);
+        return Gdiplus::SizeF(h / r, h);
+    }
+    std::wstring dashSubtitle() const {
+        const PiDisplay& d = host.status().display;
+        if (!d.known) return tr(Str::DashSubtitle);
+        const std::wstring model = d.model.empty() ? std::wstring(L"Raspberry Pi") : fromUtf8(d.model);
+        const wchar_t* mode = tr(d.touch ? Str::DisplayTouch : Str::DisplayViewOnly);
+        if (!d.sizeKnown()) return fmt(Str::DashSubtitleNoSize, model.c_str(), mode);
+        return fmt(Str::DashSubtitleFormat, model.c_str(), d.width, d.height, mode);
+    }
+
     float pageDashboard(Canvas& c) {
         const Palette& p = pal();
         const Look l = look();
@@ -564,7 +581,7 @@ public:
         const float x = left(), w = width();
         float y = top();
         heading(c, tr(Str::TabDashboard), RectF(x, y, w, 28));
-        c.text(tr(Str::DashSubtitle), RectF(x + w - 320, y + 4, 320, 20), Face::Body, 12, p.ink2, Right);
+        c.text(dashSubtitle(), RectF(x + w - 460, y + 4, 460, 20), Face::Body, 12, p.ink2, Right);
         y += 28 + 18;
 
         if (!l.configured) {
@@ -588,11 +605,14 @@ public:
         // row 1: Now showing | Connection + Current game
         {
             const float innerA = colA - 32;
-            const float previewH = innerA * 0.6f;
+            const Gdiplus::SizeF previewSize = thumbSize(innerA, 360);
+            const float previewH = previewSize.Height;
             std::wstring caption;
             if (!l.configured) caption = tr(Str::CaptionConnectFirst);
             else if (!l.connected) caption = tr(Str::CaptionOffline);
-            else if (st.gameActive) caption = fmt(Str::CaptionMarquee, st.gameTitle.c_str());
+            else if (st.gameActive)
+                caption = fmt(st.display.touch ? Str::CaptionMarquee : Str::CaptionMarqueeViewOnly, st.gameTitle.c_str(),
+                              st.display.shownWidth(), st.display.shownHeight());
             else caption = fmt(Str::CaptionDefaultMedia, roleFile(ROLES[0].marker).empty() ? L"—" : roleFile(ROLES[0].marker).c_str());
             const float captionH = c.textHeight(caption, Face::Body, 12, innerA);
             const float leftH = 16 + 18 + 10 + previewH + 10 + captionH + 16;
@@ -614,7 +634,7 @@ public:
             const Color tagColor = l.configured ? l.color : p.ink2;
             c.text(!l.configured ? L"—" : l.connected ? tr(Str::TagLive) : tr(Str::TagOffline),
                    RectF(a.X + a.Width - 16 - 120, a.Y + 16, 120, 18), Face::BodySemi, 11, tagColor, Right);
-            drawPreview(c, RectF(a.X + 16, a.Y + 16 + 18 + 10, innerA, previewH), l, st);
+            drawPreview(c, RectF(a.X + 16 + (innerA - previewSize.Width) / 2, a.Y + 16 + 18 + 10, previewSize.Width, previewH), l, st);
             c.text(caption, RectF(a.X + 16, a.Y + 16 + 18 + 10 + previewH + 10, innerA, captionH + 2), Face::Body, 12, p.ink2,
                    Left, false, true);
 
@@ -650,7 +670,9 @@ public:
         // row 2: Active roles | Quick actions
         {
             const float innerA = colA - 32;
-            const float cardW = (innerA - 20) / 3.f, thumbH = cardW * 0.6f;
+            const float cardW = (innerA - 20) / 3.f;
+            const Gdiplus::SizeF roleThumb = thumbSize(cardW, 110);
+            const float thumbH = roleThumb.Height;
             const float rolesH = 16 + 18 + 12 + thumbH + 6 + 15 + 6 + 17 + 16;
             const float actionsH = 16 + 16 + 10 + 38 * 2 + 8 + 16;
             const float rowH = std::max(rolesH, actionsH);
@@ -662,7 +684,7 @@ public:
             for (int r = 0; r < 3; ++r) {
                 const float cx = a.X + 16 + r * (cardW + 10), cy = a.Y + 16 + 18 + 12;
                 const std::wstring name = roleFile(ROLES[r].marker);
-                thumbBox(c, RectF(cx, cy, cardW, thumbH), thumbFor(name), 5, roleColor(r));
+                thumbBox(c, RectF(cx, cy, roleThumb.Width, thumbH), thumbFor(name), 5, roleColor(r));
                 c.text(tr(ROLES[r].chip), RectF(cx, cy + thumbH + 6, cardW, 15), Face::BodyBold, 11, roleColor(r));
                 c.text(name.empty() ? L"—" : name, RectF(cx, cy + thumbH + 6 + 15 + 6, cardW, 17), Face::Body, 12, p.ink);
             }
@@ -878,7 +900,9 @@ public:
         button(c, RectF(seg.X + 3, seg.Y + 3, segW1, 28), tr(Str::MediaGrid), ID_VIEW_GRID, grid ? Button::SegmentOn : Button::Segment);
         button(c, RectF(seg.X + 3 + segW1, seg.Y + 3, segW2, 28), tr(Str::MediaListView), ID_VIEW_LIST, grid ? Button::Segment : Button::SegmentOn);
         y += 34 + 8;
-        c.text(tr(Str::MediaSubline), RectF(x, y, w, 18), Face::Body, 12, p.ink2);
+        const PiDisplay& shown = host.status().display;
+        c.text(fmt(shown.cover ? Str::MediaSublineCover : Str::MediaSubline, shown.shownWidth(), shown.shownHeight()),
+               RectF(x, y, w, 18), Face::Body, 12, p.ink2);
         y += 18 + 14;
 
         if (uploadError.shown) {
@@ -911,7 +935,8 @@ public:
         } else if (grid) {
             const int cols = std::max(1, int((listW + 12) / (150 + 12)));
             const float cardW = (listW - float(cols - 1) * 12) / float(cols);
-            const float thumbH = (cardW - 16) * 0.6f, cardH = 8 + thumbH + 7 + 18 + 7 + 18 + 8;
+            const Gdiplus::SizeF gridThumb = thumbSize(cardW - 16, 140);
+            const float thumbH = gridThumb.Height, cardH = 8 + thumbH + 7 + 18 + 7 + 18 + 8;
             for (size_t i = 0; i < entries.size(); ++i) {
                 const Entry& e = entries[i];
                 RectF card(x + float(int(i) % cols) * (cardW + 12), startY + float(int(i) / cols) * (cardH + 12), cardW, cardH);
@@ -919,7 +944,7 @@ public:
                 if (on) c.glow(card, 8, p.pink, 9, 100);
                 c.fillRound(card, 8, p.pbg);
                 c.strokeRound(card, 8, on ? p.pink : p.line);
-                mediaThumb(c, e, RectF(card.X + 8, card.Y + 8, cardW - 16, thumbH), 5, true);
+                mediaThumb(c, e, RectF(card.X + 8, card.Y + 8, gridThumb.Width, thumbH), 5, true);
                 c.text(e.name, RectF(card.X + 8, card.Y + 8 + thumbH + 7, cardW - 16, 18), Face::BodySemi, 13, p.ink);
                 float cx = card.X + 8;
                 for (int r = 0; r < 3; ++r) {
@@ -949,7 +974,8 @@ public:
                 RectF row(x, ry, listW, rowH);
                 if (int(i) == selected) c.fillRect(RectF(x + 1, ry, listW - 2, rowH), p.ibg);
                 else if (hovered(ID_MEDIA + int(i))) c.fillRect(RectF(x + 1, ry, listW - 2, rowH), withAlpha(p.ibg, 120));
-                mediaThumb(c, e, RectF(cx0, ry + (rowH - 33.6f) / 2, 56, 33.6f), 3, false);
+                const Gdiplus::SizeF rowThumb = thumbSize(56, 40);
+                mediaThumb(c, e, RectF(cx0, ry + (rowH - rowThumb.Height) / 2, rowThumb.Width, rowThumb.Height), 3, false);
                 c.text(e.name, RectF(cx1, ry, nameW, rowH), Face::BodySemi, 13, p.ink);
                 c.text(isVideo(e) ? tr(Str::MediaVideo) : tr(Str::MediaImage), RectF(cx2, ry, 60, rowH), Face::Body, 13, p.ink2);
                 c.text(sizeText(e.size), RectF(cx3, ry, 70, rowH), Face::Mono, 12, p.ink2);
@@ -973,7 +999,8 @@ public:
             RectF d(x + listW + 16, startY, detailW, 100);
             const Entry* e = selected >= 0 && size_t(selected) < entries.size() ? &entries[size_t(selected)] : nullptr;
             const float innerW = detailW - 28;
-            const float thumbH = innerW * 0.6f;
+            const Gdiplus::SizeF detailThumb = thumbSize(innerW, 170);
+            const float thumbH = detailThumb.Height;
             float dy = startY + 14;
             std::wstring meta = e ? std::wstring(isVideo(*e) ? tr(Str::MediaVideo) : tr(Str::MediaImage)) + L" · " + sizeText(e->size) : L"";
             const std::wstring hint = e && isStaticImage(*e) ? tr(Str::MediaHintStatic) : tr(Str::MediaHintVideo);
@@ -983,7 +1010,7 @@ public:
             d.Height = 14 + thumbH + 12 + nameH + 18 + 12 + 3 * 34 + 2 * 6 + 12 + hintH + (blocked ? 12 + blockedH : 0) + 12 + 32 + 14;
             panel(c, d);
             if (e) {
-                mediaThumb(c, *e, RectF(d.X + 14, dy, innerW, thumbH), 5, false);
+                mediaThumb(c, *e, RectF(d.X + 14, dy, detailThumb.Width, thumbH), 5, false);
                 dy += thumbH + 12;
                 c.text(e->name, RectF(d.X + 14, dy, innerW, nameH), Face::BodyBold, 14, p.ink, Left, false, true);
                 dy += nameH;
@@ -1043,6 +1070,12 @@ public:
         const float introH = c.textHeight(tr(Str::GesturesIntro), Face::Body, 13, w);
         c.text(tr(Str::GesturesIntro), RectF(x, y, w, introH + 2), Face::Body, 13, p.ink2, Left, false, true);
         y += introH + 16;
+        const bool touch = host.status().display.touch;
+        if (!touch) {
+            const float noteH = c.textHeight(tr(Str::GesturesNoTouch), Face::Body, 13, w);
+            c.text(tr(Str::GesturesNoTouch), RectF(x, y, w, noteH + 2), Face::Body, 13, p.yel, Left, false, true);
+            y += noteH + 16;
+        }
         RectF box(x, y, w, 55.f * GESTURE_COUNT);
         c.fillRound(box, 8, p.pbg);
         bool menuReachable = false;
@@ -1058,14 +1091,14 @@ public:
             c.text(trAt(Str::GestureLongPress, i), RectF(x + 50, ry, w - 330, 55), Face::BodySemi, 14, p.ink);
             RectF sel(x + w - 14 - 240, ry + 10.5f, 240, 34);
             gestureBox[i] = sel;
-            const bool over = hovered(ID_GESTURE + i);
+            const bool over = touch && hovered(ID_GESTURE + i);
             if (over) c.glow(sel, 6, p.cyan, 8, 70);
             c.fillRound(sel, 6, p.ibg);
             c.strokeRound(sel, 6, p.line);
-            c.text(trAt(Str::ActionNone, index), RectF(sel.X + 10, sel.Y, sel.Width - 34, sel.Height), Face::Body, 13, p.ink);
+            c.text(trAt(Str::ActionNone, index), RectF(sel.X + 10, sel.Y, sel.Width - 34, sel.Height), Face::Body, 13, touch ? p.ink : p.ink2);
             c.line(sel.X + sel.Width - 22, sel.Y + 14, sel.X + sel.Width - 17, sel.Y + 19, p.ink2, 1.6f);
             c.line(sel.X + sel.Width - 17, sel.Y + 19, sel.X + sel.Width - 12, sel.Y + 14, p.ink2, 1.6f);
-            add(sel, ID_GESTURE + i);
+            add(sel, ID_GESTURE + i, touch);
             if (i + 1 < GESTURE_COUNT) c.line(x, ry + 54.5f, x + w, ry + 54.5f, p.line);
         }
         c.strokeRound(box, 8, p.line);
@@ -1144,7 +1177,8 @@ public:
         // Pi touch menu preview in the language the Pi will use
         {
             const bool german = resolvedLanguage() == "de";
-            RectF box(x + cardsW + 16, y, previewW, previewW * 0.6f);
+            const Gdiplus::SizeF menuThumb = thumbSize(previewW, 170);
+            RectF box(x + cardsW + 16, y, menuThumb.Width, menuThumb.Height);
             c.fillRound(box, 6, Color(255, 0x0a, 0x07, 0x16));
             c.strokeRound(box, 6, Color(255, 0x2a, 0x20, 0x48), 2);
             const Str tiles[4] = {Str::TouchView, Str::TouchBrightness, Str::TouchStatus, Str::TouchRestart};
@@ -1155,7 +1189,7 @@ public:
                 c.strokeRound(t, 4, Color(115, 0x2e, 0xf2, 0xff));
                 c.text(trLang(tiles[i], german), t, Face::BodySemi, 11, Color(255, 0xe9, 0xe3, 0xff), Center);
             }
-            c.text(tr(Str::TouchMenuPreview), RectF(box.X, box.Y + box.Height + 6, box.Width, 16), Face::Body, 11, p.ink2);
+            c.text(tr(Str::TouchMenuPreview), RectF(box.X, box.Y + box.Height + 6, previewW, 16), Face::Body, 11, p.ink2);
             cy = std::max(cy, box.Y + box.Height + 22);
         }
         y = std::max(cy, y + 3 * 58) + 16;

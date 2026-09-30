@@ -142,6 +142,7 @@ struct FakePi : PiTransport {
     std::function<HttpResult(const Call&)> handler;  // may throw HttpError or runtime_error
     std::string instance = "a";
     std::string events = "[]";
+    std::string statusBody = R"({"game_title":""})";
 
     HttpResult request(const Settings&, const std::wstring& method, const std::wstring& path,
                        const std::string& body, const std::wstring&, int) override {
@@ -151,7 +152,7 @@ struct FakePi : PiTransport {
             HttpResult custom = handler(call);
             if (custom.status) return custom;
         }
-        if (path == L"/v1/status") return {200, R"({"game_title":""})"};
+        if (path == L"/v1/status") return {200, statusBody};
         if (path.rfind(L"/v1/gesture-events", 0) == 0)
             return {200, "{\"instance_id\":\"" + instance + "\",\"events\":" + events + "}"};
         return {200, "{}"};
@@ -415,6 +416,37 @@ void piSyncTests() {
         ticks(sync, 1);
         assert((seen == std::vector<bool>{false, false, true}));
     }
+    // The display block of /v1/status: absent (older Pi), partial and complete.
+    {
+        FakePi pi;
+        PiSync legacy(piSettings(), pi);
+        assert(!legacy.piDisplay().known);
+        ticks(legacy, 1);
+        const PiDisplay old = legacy.piDisplay();
+        assert(!old.known && old.touch && !old.cover && !old.sizeKnown());
+        assert(old.shownWidth() == 800 && old.shownHeight() == 480 && std::abs(old.ratio() - 0.6) < 1e-9);
+    }
+    {
+        FakePi pi;
+        pi.statusBody = R"({"game_title":"","display":{"output":"HDMI-1","width":null,"height":null,"touch":false,"fit":"cover","pi_model":"Raspberry Pi 4 Model B"}})";
+        int reported = 0;
+        PiDisplay last;
+        PiSyncEvents events;
+        events.display = [&](const PiDisplay& d) { ++reported; last = d; };
+        PiSync sync(piSettings(), pi, events);
+        ticks(sync, 1);
+        assert(reported == 1 && last.known && !last.touch && last.cover && !last.sizeKnown());
+        assert(last.model == "Raspberry Pi 4 Model B" && last.output == "HDMI-1");
+        assert(last.shownWidth() == 800 && last.shownHeight() == 480);  // size unknown: the old default
+        pi.statusBody = R"({"game_title":"","display":{"output":"HDMI-1","width":1920,"height":360,"touch":true,"fit":"contain"}})";
+        ticks(sync, 7);  // the next status cycle
+        const PiDisplay wide = sync.piDisplay();
+        assert(wide.sizeKnown() && wide.width == 1920 && wide.height == 360 && wide.touch && !wide.cover);
+        assert(std::abs(wide.ratio() - 0.1875) < 1e-9);
+    }
+    // Artwork is scaled to at most the display size, never below 1600 px or above 3840 px.
+    assert(artworkEdgeFor(0, 0) == 1600 && artworkEdgeFor(800, 480) == 1600 && artworkEdgeFor(1920, 1080) == 1920);
+    assert(artworkEdgeFor(1080, 2160) == 2160 && artworkEdgeFor(3840, 2160) == 3840 && artworkEdgeFor(8000, 4000) == 3840);
     // Status events carry the Pi's game title (empty for the default media) and the round trip.
     {
         FakePi pi;
@@ -621,6 +653,16 @@ int main() {
                    (uint32_t(uint8_t(png[at + 2])) << 8) | uint32_t(uint8_t(png[at + 3]));
         };
         assert(beU32(16) == 1600 && beU32(20) == 640);  // IHDR width and height after scaling
+        {  // a larger limit (a bigger display) leaves the 2000 px image as it is
+            auto wide = parse(gamePayload(game, 2400));
+            assert(takeArtworkErrors().empty());
+            const std::string big = decodeBase64(wide.get("marquee").get("base64").value());
+            const auto bigU32 = [&](size_t at) {
+                return (uint32_t(uint8_t(big[at])) << 24) | (uint32_t(uint8_t(big[at + 1])) << 16) |
+                       (uint32_t(uint8_t(big[at + 2])) << 8) | uint32_t(uint8_t(big[at + 3]));
+            };
+            assert(big.size() > 24 && bigU32(16) == 2000 && bigU32(20) == 800);
+        }
         const std::string jpg = decodeBase64(body.get("logo").get("base64").value());
         assert(jpg.size() > 4 && uint8_t(jpg[0]) == 0xFF && uint8_t(jpg[1]) == 0xD8);
         const std::wstring scaledJpg = dataDirectory() + L"\\scaled-logo.jpg";

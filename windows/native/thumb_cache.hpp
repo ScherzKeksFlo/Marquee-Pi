@@ -11,7 +11,11 @@ constexpr UINT WM_THUMB_READY = WM_APP + 31;
 
 class ThumbCache {
 public:
-    static constexpr int WIDTH = 320, HEIGHT = 192;  // 5:3, the Pi display's aspect ratio
+    // Thumbnails have the aspect ratio of the Pi display (5:3 until it reports another one).
+    int width() const;
+    int height() const;
+    // height / width of the display; changing it drops the cached thumbnails.
+    void setRatio(double ratio);
 
     static ThumbCache& instance();
     // Null until the thumbnail exists; asks the worker to make it on the first call.

@@ -39,6 +39,7 @@ struct PiStatus {
     bool connected = false;
     std::wstring title;      // what the Pi shows; empty = default media
     int latencyMs = -1;
+    PiDisplay display;       // what the Pi reported about its screen
     std::time_t lastContact = 0;
     bool pipeListening = false;
     bool gameActive = false;
