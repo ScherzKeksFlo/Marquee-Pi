@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "pi_sync.hpp"
 #include "strings.hpp"
 #include "thumbnail.hpp"
 #include <windows.h>
@@ -161,11 +162,8 @@ class App {
 public:
     HWND hwnd = nullptr, settingsWindow = nullptr;
     HICON onlineIcon = nullptr, offlineIcon = nullptr;
-    Settings settings;
-    std::mutex mutex;
-    std::optional<GameMessage> game;
-    uint64_t gameVersion = 0, configVersion = 0;
-    bool needsSync = false, pendingDefault = false, gestureDirty = true;
+    WinHttpTransport transport;
+    PiSync sync;
     std::atomic<bool> stopping{false};
     std::mutex pipeHandleMutex;
     HANDLE activePipe = INVALID_HANDLE_VALUE;
@@ -175,7 +173,10 @@ public:
     FILETIME startedUtc{};
     std::wstring status;
 
-    explicit App(Settings initial) : settings(std::move(initial)) { status = tr(Str::StatusChecking); }
+    explicit App(Settings initial) : sync(std::move(initial), transport, syncEvents()) {
+        status = tr(Str::StatusChecking);
+    }
+    PiSyncEvents syncEvents();
     bool start(HINSTANCE instance);
     void close();
     void addIcon(bool add);
@@ -214,8 +215,8 @@ bool App::start(HINSTANCE instance) {
     taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
     addIcon(true);
     try {
-        if (settings.autostart || autostartEnabled() != settings.autostart)
-            setAutostart(settings.autostart);
+        const bool autostart = sync.settings().autostart;
+        if (autostart || autostartEnabled() != autostart) setAutostart(autostart);
     } catch (const std::exception& e) { alert(hwnd, errorText(e), L"Autostart"); }
     polling = std::thread(&App::pollLoop, this);
     pipe = std::thread(&App::pipeLoop, this);
@@ -291,16 +292,10 @@ void App::command(int id) {
         if (MessageBoxW(hwnd, prompt, L"Marquee-Pi", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
     }
     try {
-        Settings copy;
-        { std::lock_guard<std::mutex> guard(mutex); copy = settings; }
-        const wchar_t* endpoint = id == M_DEFAULT ? L"/v1/default" :
-                                  id == M_RELOAD ? L"/v1/reload" :
-                                  id == M_REBOOT ? L"/v1/reboot" : L"/v1/shutdown";
-        piRequest(copy, L"POST", endpoint);
-        if (id == M_DEFAULT) {
-            std::lock_guard<std::mutex> guard(mutex);
-            game.reset(); needsSync = false; pendingDefault = false; ++gameVersion;
-        }
+        if (id == M_DEFAULT) sync.showDefault();
+        else if (id == M_RELOAD) sync.reloadDisplay();
+        else if (id == M_REBOOT) sync.rebootPi();
+        else sync.shutdownPi();
     } catch (const std::exception& error) { alert(hwnd, errorText(error)); }
 }
 void App::reloadSettings() {
@@ -310,124 +305,28 @@ void App::reloadSettings() {
             throw std::runtime_error("INI has invalid Pi URL, token or hotkey");
         setAutostart(loaded.autostart);
         setUiLanguage(resolveLanguage(loaded.language));
-        {
-            std::lock_guard<std::mutex> guard(mutex);
-            settings = loaded; gestureDirty = true; needsSync = game.has_value(); ++configVersion;
-        }
+        sync.settingsChanged(std::move(loaded));
     } catch (const std::exception& error) { alert(hwnd, errorText(error), tr(Str::TitleReloadIni)); }
 }
 void App::onGame(GameMessage message) {
-    std::lock_guard<std::mutex> guard(mutex);
-    if (message.action == "game") {
-        game = std::move(message);
-        needsSync = true; pendingDefault = false; ++gameVersion;
-    } else if (message.action == "exit") {
-        game.reset(); needsSync = false; pendingDefault = true; ++gameVersion;
-    }
+    if (message.action == "game") sync.gameStarted(std::move(message));
+    else if (message.action == "exit") sync.gameExited();
+}
+PiSyncEvents App::syncEvents() {
+    PiSyncEvents events;
+    events.status = [this](bool isConnected, const std::string& title) {
+        std::wstring shown = fromUtf8(title);
+        if (isConnected && shown.empty()) shown = tr(Str::DefaultMediaTitle);
+        auto* update = new StatusUpdate{isConnected, isConnected ? shown : std::wstring()};
+        if (!PostMessageW(hwnd, WM_STATUS, 0, (LPARAM)update)) delete update;
+    };
+    events.retroArchMenu = [this] { PostMessageW(hwnd, WM_APP_HOTKEY, 0, 0); };
+    events.warning = [](const std::string& message) { logArtworkWarning(message); };
+    return events;
 }
 void App::pollLoop() {
-    std::string instance;
-    int64_t cursor = 0;
-    bool cursorReady = false;
-    int cycle = 0, heartbeat = 0;
-    bool online = false;
     while (!stopping) {
-        Settings copy;
-        std::optional<GameMessage> current;
-        uint64_t version = 0;
-        bool dirty, sync, reset;
-        {
-            std::lock_guard<std::mutex> guard(mutex);
-            copy = settings; current = game; version = gameVersion;
-            dirty = gestureDirty; sync = needsSync; reset = pendingDefault;
-        }
-        if (cycle % 7 == 0) {
-            try {
-                auto response = piRequest(copy, L"GET", L"/v1/status");
-                auto json = mini::parse(response.body);
-                online = true;
-                std::wstring title = fromUtf8(json.get("game_title").value(""));
-                if (title.empty()) title = tr(Str::DefaultMediaTitle);
-                auto* update = new StatusUpdate{true, title};
-                if (!PostMessageW(hwnd, WM_STATUS, 0, (LPARAM)update)) delete update;
-
-            } catch (...) {
-                online = false;
-                auto* update = new StatusUpdate{false, L""};
-                if (!PostMessageW(hwnd, WM_STATUS, 0, (LPARAM)update)) delete update;
-                std::lock_guard<std::mutex> guard(mutex);
-                gestureDirty = true;
-                if (game) needsSync = true;
-            }
-        }
-        if (online && copy.configured()) {
-            if (cycle % 7 == 0 && current && ++heartbeat % 3 == 0) {
-                try { piRequest(copy, L"POST", L"/v1/heartbeat"); } catch (...) {}
-            }
-            try {
-                if (dirty) {
-                    piRequest(copy, L"POST", L"/v1/gesture-config", gesturePayload(copy),
-                              L"application/json; charset=utf-8");
-                    try {  // a Pi without language support answers 404; the gestures above still count
-                        piRequest(copy, L"POST", L"/v1/language", languagePayload(copy),
-                                  L"application/json; charset=utf-8");
-                    } catch (const HttpError& error) {
-                        if (error.status != 404) throw;
-                    }
-                    std::lock_guard<std::mutex> guard(mutex);
-                    if (configVersion == 0 || (settings.gestures == copy.gestures &&
-                                               settings.language == copy.language)) gestureDirty = false;
-                }
-                if (reset) {
-                    piRequest(copy, L"POST", L"/v1/default");
-                    std::lock_guard<std::mutex> guard(mutex);
-                    if (gameVersion == version) pendingDefault = false;
-                } else if (sync && current) {
-                    try {
-                        const std::string payload = gamePayload(*current);
-                        for (const auto& problem : takeArtworkErrors())
-                            logArtworkWarning("not sent: " + problem);
-                        auto response = piRequest(copy, L"POST", L"/v1/game", payload,
-                                                  L"application/json; charset=utf-8");
-                        for (const auto& warning : gameWarnings(response.body))
-                            logArtworkWarning(warning);
-                        std::lock_guard<std::mutex> guard(mutex);
-                        if (gameVersion == version) needsSync = false;
-                    } catch (const HttpError& error) {
-                        if (error.status >= 400 && error.status < 500) {
-                            std::lock_guard<std::mutex> guard(mutex);
-                            if (gameVersion == version) needsSync = false;
-                        } else {
-                            online = false;
-                        }
-                    } catch (...) {
-                        online = false;
-                    }
-                }
-            } catch (...) {}
-            try {
-                auto response = piRequest(copy, L"GET", L"/v1/gesture-events?after=" + std::to_wstring(cursor));
-                auto events = mini::parse(response.body);
-                std::string nextInstance = events.get("instance_id").value();
-                if (nextInstance != instance) {
-                    instance = nextInstance; cursor = 0; cursorReady = false;
-                    std::lock_guard<std::mutex> guard(mutex);
-                    gestureDirty = true;
-                    if (game) needsSync = true;
-                } else {
-                    const auto& received = events.get("events").items;
-                    for (const auto& event : events.get("events").items) {
-                        int64_t id = event.get("id").integer();
-                        if (id <= cursor) continue;
-                        cursor = id;
-                        if (cursorReady && current && event.get("action").value() == "retroarch_menu")
-                            PostMessageW(hwnd, WM_APP_HOTKEY, 0, 0);
-                    }
-                    if (!cursorReady && received.size() < 20) cursorReady = true;
-                }
-            } catch (...) {}
-        }
-        ++cycle;
+        sync.tick();
         for (int i = 0; i < 15 && !stopping; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
@@ -475,9 +374,7 @@ void App::onShutdown() {
         return;
     }
     try {
-        Settings copy;
-        { std::lock_guard<std::mutex> guard(mutex); copy = settings; }
-        piRequest(copy, L"POST", L"/v1/shutdown", {}, L"", L"", 3000);
+        sync.shutdownPi(3000);
         logShutdown(L"Pi shutdown command sent; Windows type: " + type);
     } catch (const std::exception& error) {
         logShutdown(L"Pi shutdown failed: " + errorText(error));
@@ -531,7 +428,7 @@ struct SettingsWindow {
     }
     void create() {
         Settings current;
-        { std::lock_guard<std::mutex> guard(app->mutex); current = app->settings; }
+        current = app->sync.settings();
         LOGFONTW font{};
         GetObjectW(GetStockObject(DEFAULT_GUI_FONT), sizeof(font), &font);
         font.lfWeight = FW_BOLD;
@@ -621,7 +518,7 @@ struct SettingsWindow {
     }
     void save() {
         Settings next;
-        { std::lock_guard<std::mutex> guard(app->mutex); next = app->settings; }
+        next = app->sync.settings();
         next.piUrl = readText(url);
         next.token = readText(token);
         next.hotkey = readText(hotkey);
@@ -660,11 +557,7 @@ struct SettingsWindow {
             setAutostart(next.autostart);
             saveSettings(next);
             setUiLanguage(resolveLanguage(next.language));
-            {
-                std::lock_guard<std::mutex> guard(app->mutex);
-                app->settings = next; app->gestureDirty = true;
-                app->needsSync = app->game.has_value(); ++app->configVersion;
-            }
+            app->sync.settingsChanged(next);
             DestroyWindow(hwnd);
         } catch (const std::exception& error) { alert(hwnd, errorText(error), tr(Str::TitleSettings)); }
     }
@@ -860,7 +753,7 @@ struct SettingsWindow {
         if (name.empty()) return;
         try {
             Settings settings;
-            { std::lock_guard<std::mutex> guard(app->mutex); settings = app->settings; }
+            settings = app->sync.settings();
             std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
             std::string body = readFile(path);
             if (body.size() > 20 * 1024 * 1024) throw std::runtime_error("File exceeds 20 MB upload limit");
@@ -1012,10 +905,8 @@ static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) 
         app->onGame(std::move(*game)); delete game; return 0;
     }
     case WM_APP_HOTKEY: {
-        Settings settings;
-        bool inGame;
-        { std::lock_guard<std::mutex> guard(app->mutex); settings = app->settings; inGame = app->game.has_value(); }
-        if (inGame) {
+        Settings settings = app->sync.settings();
+        if (app->sync.inGame()) {
             if (settings.retroArchNetworkControl) sendRetroArchNetworkCommand(settings.retroArchNetworkPort);
             else sendRetroArchHotkey(settings.hotkey);
         }
@@ -1043,7 +934,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR commandLine, int) {
         setUiLanguage(resolveLanguage(settings.language));
         std::wstring command = commandLine ? commandLine : L"";
         if (command.find(L"--pi-shutdown") != std::wstring::npos) {
-            try { piRequest(settings, L"POST", L"/v1/shutdown", {}, L"", L"", 3000); return 0; }
+            try {
+                WinHttpTransport transport;
+                PiSync(settings, transport).shutdownPi(3000);
+                return 0;
+            }
             catch (...) { return 1; }
         }
         INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES | ICC_TAB_CLASSES};
