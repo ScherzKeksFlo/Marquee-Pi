@@ -1,6 +1,6 @@
 # Marquee-Pi
 
-A companion display for LaunchBox/Big Box on Windows 11 and a Raspberry Pi 3 B+ with a 7-inch touch display (800 × 480).
+A companion display for LaunchBox/Big Box on Windows 11 and a Raspberry Pi with a display. Tested with a Raspberry Pi 3 B+ and the 7-inch touch display (800 × 480); HDMI and DSI displays of other sizes, with or without touch, are supported through the display profile (see [docs/displays.md](docs/displays.md)).
 
 > Project status: The Pi display and the Windows tray program are installed on the target system. A real game launch from Big Box showed the matching marquee and switched back to the default animation when the game ended. Automatic Pi shutdown was tested successfully when shutting down via Big Box and via the Windows Start menu.
 
@@ -46,7 +46,7 @@ On the first target system, the display board, which is powered through its own 
 - Direct network connection between Windows and the Pi
 - Shared wireless power socket, switched off manually after shutdown
 
-Other Pi models, displays and network addresses require a suitable local configuration; only the hardware listed above has been tested so far.
+Other Pi models, displays and network addresses require a suitable local configuration (on the Pi, `marquee-pi-configure-display` helps with the display); only the hardware listed above has been tested so far.
 
 ## Development
 

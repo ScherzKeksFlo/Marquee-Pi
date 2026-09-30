@@ -8,7 +8,7 @@ The Pi provides an HTTP API on the configured port. Windows sends the `X-Marquee
 
 | Call | Purpose |
 | --- | --- |
-| `GET /v1/status` | Read program version, game and active default media |
+| `GET /v1/status` | Read program version, game, active default media and the `display` block |
 | `POST /v1/game` | Set game and artwork |
 | `POST /v1/heartbeat` | Confirm the running game while the Windows connection is up |
 | `POST /v1/default` | End the game and show the default media |
@@ -35,6 +35,8 @@ The touch menu uses these endpoints, which like all `/ui/` paths are reachable o
 `POST /v1/default-media` uses the raw bytes of the file. `X-File-Name` provides the extension. The API checks the type and size limit (currently 20 MiB); for MP4, `ffprobe` must confirm an H.264 video stream. The file is activated permanently only after complete verification. A failed upload leaves the previous media active.
 
 `POST /v1/boot-splash` uses the same raw data format but accepts only PNG or JPEG. `POST /v1/shutdown-media` accepts the supported image and animation formats as well as H.264 MP4. On shutdown, the local display switches to this media first. For a video, the Pi waits for its detected duration plus a short margin, capped at 30 seconds, before running `systemctl poweroff`.
+
+`/v1/status` and the local `/ui/state` contain a `display` object that describes the screen: `output` (X output name or `null`), `width` and `height` (physical pixels as the kiosk page measured them, `null` until it reported), `rotation` (0, 90, 180, 270), `fit` (`contain` or `cover`), `scale` (`"auto"` or a number), `touch` (`false` for a view-only display), `pi_model` and `test_pattern` (true while `marquee-pi-configure-display` shows its test picture). Pis from before display profiles send no `display` object; clients then assume 800 × 480 with touch. The page reports its size with the local `POST /ui/display` (`{"width": n, "height": n}`), and the kiosk start script reads its profile from the local `GET /ui/display-profile` (shell variable assignments). Both are reachable from `127.0.0.1` only. See `docs/displays.md`.
 
 Successful changes return JSON with `ok: true`. Errors return an HTTP status and a JSON `error`. Restart and shutdown acknowledge the accepted command before the Pi connection ends.
 

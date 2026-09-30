@@ -46,4 +46,4 @@ The Windows PowerShell equivalent of the first command is `$env:PYTHONPATH='pi';
 
 ## Device test
 
-Tested on a Raspberry Pi 3 B+ with Raspberry Pi OS Trixie, kernel 6.18, Chromium and an 800 × 480 touch display: API tests, touch gestures, H.264 default video, real Big Box game switches, RetroArch menu invocation as well as shutdown via Big Box and the Windows Start menu work. The DSI display was detected with `bootcode_delay=5` in three consecutive cold starts.
+Tested on a Raspberry Pi 3 B+ with Raspberry Pi OS Trixie, kernel 6.18, Chromium and an 800 × 480 DSI touch display (other displays: see `docs/displays.md`): API tests, touch gestures, H.264 default video, real Big Box game switches, RetroArch menu invocation as well as shutdown via Big Box and the Windows Start menu work. The DSI display was detected with `bootcode_delay=5` in three consecutive cold starts.

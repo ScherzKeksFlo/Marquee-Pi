@@ -43,7 +43,15 @@ The menu closes after 20 seconds without input. If no gesture is assigned to **O
 - A movement above the tap threshold does not trigger a tap switch.
 - A long press needs one finger that stays within the tap distance for 0.8 s; its release then produces no tap. It fires once per touch and only if a real action is assigned.
 - Ambiguous, aborted and simultaneous multi-finger inputs result in no action.
-- With a rotated display, the directions apply from the user's point of view; the display orientation is set on the Pi.
+- With a rotated display, the directions apply from the user's point of view; the rotation is set in the display profile and the touch coordinates are rotated with the picture.
+
+## Displays without touch
+
+If the display profile has no touch device (a *view-only display*), the Pi shows the marquee and ignores every touch and click: no gestures, no tap switch, no touch menu. Brightness and restart are then only available from the Windows app. The Windows gestures page says so and disables the assignments.
+
+## Other screen sizes
+
+The menu scales with the display: the short side of the screen is 480 CSS pixels by default (`scale` in the display profile), which also scales the gesture distances. On displays under 400 CSS pixels high the menu is denser, and on portrait displays the five views wrap onto two rows.
 
 ## Acceptance on the device
 

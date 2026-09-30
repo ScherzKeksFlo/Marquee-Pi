@@ -1,6 +1,6 @@
 # Installation on Raspberry Pi OS
 
-This guide describes a fresh installation of Marquee-Pi on Raspberry Pi OS Lite (32-bit, currently Debian 13 "Trixie"). Tested on September 27, 2026 on a Raspberry Pi 3 B+ with an 800 × 480 DSI touch display and an 8 GB microSD card. For later OS versions, check package names and Polkit rules again.
+This guide describes a fresh installation of Marquee-Pi on Raspberry Pi OS Lite (32-bit, currently Debian 13 "Trixie"). Tested on September 27, 2026 on a Raspberry Pi 3 B+ with an 800 × 480 DSI touch display and an 8 GB microSD card. Other displays (HDMI or DSI, with or without touch) are supported through the display profile, see [docs/displays.md](../docs/displays.md), but only the DSI combination above has been tested so far. For later OS versions, check package names and Polkit rules again.
 
 ## Boot medium and operating system
 
@@ -15,7 +15,7 @@ After the first boot, log in via SSH and update:
 ```sh
 sudo apt update
 sudo apt full-upgrade -y
-sudo apt install -y python3 ffmpeg fbi curl chromium xserver-xorg xserver-xorg-input-libinput xinit x11-xserver-utils xauth polkitd openssl
+sudo apt install -y python3 ffmpeg fbi curl chromium xserver-xorg xserver-xorg-input-libinput xinit x11-xserver-utils xauth xinput polkitd openssl
 sudo apt clean
 ```
 
@@ -25,7 +25,8 @@ sudo apt clean
 - `curl`: activates the stored shutdown media in the local kiosk on a direct Pi shutdown.
 - `chromium`: full-screen display of the local web page.
 - `xserver-xorg`, `xserver-xorg-input-libinput`, `xinit`, `xauth`: X11 session and touch input. The tested ft5x06 touchscreen was detected via libinput.
-- `x11-xserver-utils`: `xset` disables the screen saver and DPMS.
+- `x11-xserver-utils`: `xset` disables the screen saver and DPMS; `xrandr` selects the screen, mode and rotation.
+- `xinput`: rotates the touch coordinates together with the picture.
 - `polkitd`: tightly limited permission for Pi restart and shutdown.
 - `openssl`: generate a random API token.
 
@@ -52,15 +53,29 @@ The package installs everything described under "Manual installation" below in o
 sudo apt install ./marquee-pi_*_all.deb
 ```
 
-The package creates the service user `marqueepi`, installs the program to `/opt/marquee-pi`, the systemd services, the Polkit rule, the Chromium policy and the Xorg configuration, generates `/etc/marquee-pi/config.json` with a random API token (never overwritten on upgrades) and starts the services. The kiosk logs in as user `pi`; if there is no such user, the first regular user is used and the installer prints the drop-in it wrote.
+The package creates the service user `marqueepi`, installs the program to `/opt/marquee-pi`, the systemd services, the Polkit rule, the Chromium policy and the Xorg configuration, generates `/etc/marquee-pi/config.json` with a random API token (never overwritten on upgrades), sets up the display (see "Choosing the display") and starts the services. The kiosk logs in as user `pi`; if there is no such user, the first regular user is used and the installer prints the drop-in it wrote.
 
 Afterwards:
 
 1. Review `/etc/marquee-pi/config.json`: set `allowed_client_ips` to the Windows IP, `bind` if needed, and `power_commands_enabled` when the touch menu and the Windows app may restart or shut down the Pi. Then `sudo systemctl restart marquee-pi-api`.
 2. Enter the token from that file in the Windows app under **Settings > Connection**.
-3. Continue with the network, boot splash and quiet boot sections. The boot configuration is deliberately not changed by the package. `marquee-pi-configure-quiet-boot` and `marquee-display-test` are installed to `/usr/sbin`.
+3. Continue with the network, boot splash and quiet boot sections. The package changes the boot configuration only if you confirm it in `marquee-pi-configure-display`. `marquee-pi-configure-display`, `marquee-pi-configure-quiet-boot` and `marquee-display-test` are installed to `/usr/sbin`.
 
 Upgrade with `sudo apt install ./newer-package.deb`; configuration and media are kept. `sudo apt remove marquee-pi` stops and disables the services; `sudo apt purge marquee-pi` also deletes the configuration including the token, the stored media and the service user.
+
+## Choosing the display
+
+`marquee-pi-configure-display` finds the connected screens (HDMI, DSI) and touch devices, lets you pick one and saves the choice as the *display profile* in the `display` section of `/etc/marquee-pi/config.json`. Exactly one screen is used; other connected screens are switched off while the kiosk runs.
+
+- **Fresh package installation on a terminal:** the installer runs it interactively.
+- **No terminal, or an upgrade without a profile:** it derives a profile from what is connected (DSI first, then HDMI; a single touchscreen if there is one) without questions and without changing the boot configuration. An existing profile is always kept.
+- **Later:** run `sudo marquee-pi-configure-display` again to choose another screen, change the rotation (0, 90, 180, 270), the picture fit (`contain` or `cover`) or the mode.
+
+It shows a test picture on the screen (an arrow for "up", the output name and the resolution) and keeps the new profile only if you confirm within 15 seconds; otherwise the previous settings come back. Touch is matched to the screen: with one touchscreen it is used, with several you touch the display to pick the right one. Without a touch device the display is view-only: it shows the marquee and ignores all touch, the Windows app controls everything.
+
+Some screens need an entry in the boot configuration (a DSI screen needs `video=DSI-1:<mode>@60` in `cmdline.txt`). The command never changes it silently: it asks, and you can apply the change (a backup is kept, `sudo marquee-pi-configure-display --revert` undoes it), have the exact steps written to a text file to do by hand, or skip it. See `docs/adr/0001`.
+
+Other options: `--auto` (no questions), `--dry-run` (change nothing), `--json` (print what was detected), `--instructions FILE`, `--no-test`. The profile keys are described in [docs/displays.md](../docs/displays.md).
 
 ## Manual installation from the repository
 
@@ -70,8 +85,9 @@ Run the following commands in the `pi` folder of a local copy of this repository
 PI_USER=pi
 sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin marqueepi
 sudo install -d -o root -g root -m 755 /opt/marquee-pi
-sudo cp -a marquee_pi.py start-kiosk.sh show-shutdown.sh static /opt/marquee-pi/
+sudo cp -a marquee_pi.py display_profile.py configure_display.py start-kiosk.sh show-shutdown.sh static /opt/marquee-pi/
 sudo chmod 755 /opt/marquee-pi/start-kiosk.sh /opt/marquee-pi/show-shutdown.sh
+sudo install -o root -g root -m 755 marquee-pi-configure-display.sh /usr/local/sbin/marquee-pi-configure-display
 sudo install -o root -g root -m 755 configure-quiet-boot.sh /usr/local/sbin/marquee-pi-configure-quiet-boot
 sudo install -d -m 755 /etc/X11/xorg.conf.d /etc/chromium/policies/managed
 sudo install -m 644 xorg-modesetting.example.conf /etc/X11/xorg.conf.d/20-marquee-pi-modesetting.conf
@@ -151,7 +167,7 @@ sudo marquee-display-test blink
 sudo marquee-display-test reset
 ```
 
-`status` shows DSI, touch, X11 and service status. `blink` switches a detected display off for three seconds and back on. `reset` resets an existing DSI output and the kiosk. If DSI is missing entirely, `reset` performs a single warm restart of the Pi; the display power supply must stay on during this.
+`status` shows the configured screen, DSI, touch, X11 and service status. `blink` switches the configured screen off for three seconds and back on. `reset` resets the output and the kiosk. For a DSI screen that is missing entirely, `reset` performs a single warm restart of the Pi; the display power supply must stay on during this. Other screens are never rebooted for.
 
 ## Black DSI display on the Pi 3 B+
 

@@ -11,12 +11,12 @@ The version comes from `APP_VERSION` in `pi/marquee_pi.py`; a pre-release such a
 
 ## What the package does
 
-- Installs the program to `/opt/marquee-pi`, the four systemd services to `/usr/lib/systemd/system`, the Polkit rule to `/usr/share/polkit-1/rules.d`, the Chromium policy and the Xorg configuration to `/etc` (both are conffiles), and the helpers `marquee-pi-configure-quiet-boot` and `marquee-display-test` to `/usr/sbin`.
-- `postinst` creates the system user `marqueepi`, the directories `/var/lib/marquee-pi` and `/etc/marquee-pi`, generates `/etc/marquee-pi/config.json` with a random token on the first install (never on upgrades), picks the kiosk login user, enables and starts the services.
+- Installs the program to `/opt/marquee-pi`, the four systemd services to `/usr/lib/systemd/system`, the Polkit rule to `/usr/share/polkit-1/rules.d`, the Chromium policy and the Xorg configuration to `/etc` (both are conffiles), and the helpers `marquee-pi-configure-display`, `marquee-pi-configure-quiet-boot` and `marquee-display-test` to `/usr/sbin`.
+- `postinst` creates the system user `marqueepi`, the directories `/var/lib/marquee-pi` and `/etc/marquee-pi`, generates `/etc/marquee-pi/config.json` with a random token on the first install (never on upgrades), sets up the display profile (asks on a fresh install on a terminal; otherwise derives it without questions; an existing profile is kept), picks the kiosk login user, enables and starts the services.
 - Dependencies (`Depends`) cover every program the scripts call, so `sudo apt install ./marquee-pi_….deb` pulls in whatever is missing. Plain `dpkg -i` does not resolve dependencies; if it was used, `sudo apt -f install` completes the installation. `libraspberrypi-bin` (for `vcgencmd`) is only recommended because it exists only in the Raspberry Pi OS repository.
 - `prerm` stops and disables the services on removal. `postrm` reloads systemd; on `purge` it also deletes the configuration, the stored media and the service user.
 
-The boot configuration (`config.txt`, `cmdline.txt`, quiet boot) is deliberately not touched by the package. See `pi/INSTALL.md`.
+The package itself does not touch the boot configuration (`config.txt`, `cmdline.txt`, quiet boot). Only `marquee-pi-configure-display` can change `cmdline.txt`, and only after the user confirmed it; `--revert` undoes that, and removing or purging the package leaves the entries in place (run `--revert` first if you want them gone). See `pi/INSTALL.md` and `docs/adr/0001`.
 
 ## Checks
 

@@ -19,7 +19,7 @@ The windows are drawn by the program itself (GDI+, no extra runtime) in an arcad
 - `Theme`: `dark` (default), `light` or `auto` (follows the Windows app theme).
 - `Navigation`: `sidebar` (default) or `tabs`.
 
-The window scales with the display (per-monitor DPI). The Logs page keeps the last 500 events in memory; `shutdown.log` and `artwork-warnings.log` in the data folder are unchanged.
+The window scales with the display (per-monitor DPI). The dashboard, the media page and the thumbnails follow the screen the Pi reports (size, aspect ratio, touch or view-only); until a Pi reports one, 800 × 480 with touch is assumed. The Logs page keeps the last 500 events in memory; `shutdown.log` and `artwork-warnings.log` in the data folder are unchanged.
 
 ## Installation and configuration
 

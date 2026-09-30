@@ -18,7 +18,7 @@
 | Game end | Default media | No change |
 | Windows connection lost | Default media after a timeout expires | No change |
 
-The artwork is scaled proportionally to fit 800 × 480. Cropping is disabled by default. New game events discard older display states. After the connection is re-established, Windows synchronizes the current state.
+The artwork is scaled proportionally to fit the display (800 × 480 on the tested one); the display profile can switch the fit to `cover`, which crops. Windows scales large images down to at most the display's longer side, but not below 1600 px and not above 3840 px. New game events discard older display states. After the connection is re-established, Windows synchronizes the current state.
 
 ## Touch gestures
 
