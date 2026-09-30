@@ -1,24 +1,23 @@
 #include "core.hpp"
+#include "event_log.hpp"
 #include "pi_sync.hpp"
+#include "popups.hpp"
+#include "settings_ui.hpp"
 #include "strings.hpp"
-#include "thumbnail.hpp"
+#include "thumb_cache.hpp"
+#include "ui_host.hpp"
+#include "ui_kit.hpp"
 #include <windows.h>
-#include <commctrl.h>
-#include <commdlg.h>
 #include <shellapi.h>
 #include <winevt.h>
-#include <filesystem>
 #include <atomic>
 #include <chrono>
+#include <ctime>
 #include <mutex>
 #include <optional>
-#include <set>
 #include <thread>
 #include <vector>
-#include <algorithm>
-#include <sstream>
 
-namespace fs = std::filesystem;
 constexpr UINT WM_TRAY = WM_APP + 1;
 constexpr UINT WM_STATUS = WM_APP + 2;
 constexpr UINT WM_GAME = WM_APP + 3;
@@ -26,52 +25,12 @@ constexpr UINT WM_APP_HOTKEY = WM_APP + 4;
 constexpr UINT WM_ERROR = WM_APP + 5;
 constexpr wchar_t PIPE_NAME[] = L"\\\\.\\pipe\\MarqueePiGameEvents";
 constexpr int ICON_CONNECTED = 101, ICON_DISCONNECTED = 102;
-enum MenuId {
-    M_MEDIA = 1001, M_DEFAULT, M_RELOAD, M_REBOOT, M_SHUTDOWN,
-    M_SETTINGS, M_OPEN_INI, M_LOAD_INI, M_EXIT
-};
-enum SettingId {
-    S_URL = 2001, S_TOKEN, S_SHOW_TOKEN, S_HELP, S_HOTKEY, S_RETRO_MODE, S_RETRO_PORT,
-    S_STARTUP, S_OPEN_INI, S_SAVE, S_CANCEL,
-    S_GESTURE0 = 2020,
-    S_TABS = 2040,
-    S_LANGUAGE = 2041
-};
-enum MediaId { D_LIST = 3001, D_ADD, D_PREVIEW, D_ACTIVATE, D_BOOT, D_SHUTDOWN, D_REMOVE };
-struct StatusUpdate { bool connected; std::wstring title; };
-struct SettingsWindow;
+struct StatusUpdate { bool connected; std::wstring title; int latencyMs; };
 class App;
 static App* currentApp = nullptr;
-static const char* ACTION_IDS[] = {
-    "none", "marquee", "box_art", "logo", "controls", "default", "retroarch_menu", "touch_menu"
-};
-static constexpr int ACTION_COUNT = int(sizeof(ACTION_IDS) / sizeof(ACTION_IDS[0]));
-static_assert(int(Str::ActionTouchMenu) - int(Str::ActionNone) + 1 == ACTION_COUNT, "action labels out of sync");
-static const char* GESTURE_IDS[] = { "long-press", "swipe-down", "swipe-up", "swipe-right", "swipe-left" };
-static constexpr int GESTURE_COUNT = int(sizeof(GESTURE_IDS) / sizeof(GESTURE_IDS[0]));
-static_assert(int(Str::GestureLeft) - int(Str::GestureLongPress) + 1 == GESTURE_COUNT, "gesture labels out of sync");
-enum SettingsPage { PAGE_CONNECTION, PAGE_GESTURES, PAGE_MEDIA, PAGE_RETROARCH, PAGE_GENERAL, SETTINGS_PAGES };
-static constexpr int THUMB_W = 112, THUMB_H = 70, MEDIA_ITEM_HEIGHT = 78;
-constexpr UINT WM_SELECT_PAGE = WM_APP + 30, WM_THUMB = WM_APP + 31;
 
 static void alert(HWND owner, const std::wstring& message, const wchar_t* title = L"Marquee-Pi") {
     MessageBoxW(owner, message.c_str(), title, MB_OK | MB_ICONINFORMATION);
-}
-static std::wstring readText(HWND control) {
-    int n = GetWindowTextLengthW(control);
-    std::wstring text(size_t(n) + 1, L'\0');
-    GetWindowTextW(control, text.data(), n + 1);
-    text.resize(n);
-    size_t a = text.find_first_not_of(L" \t\r\n"), b = text.find_last_not_of(L" \t\r\n");
-    return a == std::wstring::npos ? L"" : text.substr(a, b - a + 1);
-}
-static HWND control(HWND parent, const wchar_t* type, const wchar_t* title,
-                    DWORD style, int x, int y, int width, int height, int id = 0) {
-    HWND h = CreateWindowExW(0, type, title, style | WS_CHILD | WS_VISIBLE,
-                             x, y, width, height, parent, (HMENU)(INT_PTR)id,
-                             GetModuleHandleW(nullptr), nullptr);
-    SendMessageW(h, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
-    return h;
 }
 static std::wstring timeStamp() {
     SYSTEMTIME t{}; GetLocalTime(&t);
@@ -91,7 +50,10 @@ static void logLine(const wchar_t* filename, const std::wstring& line) {
         CloseHandle(h);
     } catch (...) {}
 }
-static void logShutdown(const std::wstring& line) { logLine(L"shutdown.log", line); }
+static void logShutdown(const std::wstring& line) {
+    logLine(L"shutdown.log", line);
+    logEvent(LogLevel::Info, "shutdown", line);
+}
 static void logArtworkWarning(const std::string& line) {
     try { logLine(L"artwork-warnings.log", fromUtf8(line)); } catch (...) {}
 }
@@ -158,38 +120,47 @@ static std::wstring recentShutdownType(FILETIME startedUtc) {
     EvtClose(query);
     return result;
 }
-class App {
+class App : public UiHost {
 public:
-    HWND hwnd = nullptr, settingsWindow = nullptr;
+    HWND hwnd = nullptr;
     HICON onlineIcon = nullptr, offlineIcon = nullptr;
     WinHttpTransport transport;
-    PiSync sync;
+    PiSync syncer;
     std::atomic<bool> stopping{false};
     std::mutex pipeHandleMutex;
     HANDLE activePipe = INVALID_HANDLE_VALUE;
+    std::atomic<bool> pipeUp{false};
     std::thread polling, pipe;
     UINT taskbarCreated = 0;
-    bool connected = false;
     FILETIME startedUtc{};
-    std::wstring status;
+    mutable PiStatus st;
 
-    explicit App(Settings initial) : sync(std::move(initial), transport, syncEvents()) {
-        status = tr(Str::StatusChecking);
-    }
+    explicit App(Settings initial) : syncer(std::move(initial), transport, syncEvents()) {}
     PiSyncEvents syncEvents();
+
+    // UiHost
+    HWND window() override { return hwnd; }
+    PiSync& sync() override { return syncer; }
+    const PiStatus& status() const override { st.pipeListening = pipeUp; return st; }
+    void command(int id) override;
+    void languageChanged() override { addIcon(false); }
+
     bool start(HINSTANCE instance);
     void close();
     void addIcon(bool add);
     void setStatus(const StatusUpdate& update);
-    void menu();
-    void command(int id);
-    void showSettings(int page = PAGE_CONNECTION);
-    void showMedia() { showSettings(PAGE_MEDIA); }
     void reloadSettings();
     void onGame(GameMessage message);
     void pollLoop();
     void pipeLoop();
     void onShutdown();
+    void report(const std::wstring& text, ui::ToastKind kind) {
+        if (ui::settingsWindow()) ui::settingsToast(text, kind);
+    }
+    void reportError(const std::wstring& text) {
+        if (ui::settingsWindow()) ui::settingsToast(text, ui::ToastKind::Error);
+        else alert(hwnd, text);
+    }
     void postError(const std::wstring& message) {
         auto* text = new std::wstring(message);
         if (!PostMessageW(hwnd, WM_ERROR, 0, (LPARAM)text)) delete text;
@@ -197,7 +168,6 @@ public:
 };
 
 static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp);
-static LRESULT CALLBACK settingsProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp);
 
 bool App::start(HINSTANCE instance) {
     WNDCLASSW klass{};
@@ -215,9 +185,10 @@ bool App::start(HINSTANCE instance) {
     taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
     addIcon(true);
     try {
-        const bool autostart = sync.settings().autostart;
+        const bool autostart = syncer.settings().autostart;
         if (autostart || autostartEnabled() != autostart) setAutostart(autostart);
     } catch (const std::exception& e) { alert(hwnd, errorText(e), L"Autostart"); }
+    if (!syncer.settings().configured()) logEvent(LogLevel::Warn, "conn", tr(Str::LogNotConfigured));
     polling = std::thread(&App::pollLoop, this);
     pipe = std::thread(&App::pipeLoop, this);
     return true;
@@ -247,56 +218,59 @@ void App::addIcon(bool add) {
     data.uID = 1;
     data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     data.uCallbackMessage = WM_TRAY;
-    data.hIcon = connected ? onlineIcon : offlineIcon;
-    wcscpy_s(data.szTip, connected ? tr(Str::TipConnected) : tr(Str::TipDisconnected));
+    data.hIcon = st.connected ? onlineIcon : offlineIcon;
+    wcscpy_s(data.szTip, st.connected ? tr(Str::TipConnected) : tr(Str::TipDisconnected));
     Shell_NotifyIconW(add ? NIM_ADD : NIM_MODIFY, &data);
 }
 void App::setStatus(const StatusUpdate& update) {
-    connected = update.connected;
-    status = connected ? std::wstring(tr(Str::StatusConnected)) + update.title
-                       : std::wstring(tr(Str::StatusUnreachable));
+    const bool wasKnown = st.known, was = st.connected;
+    st.known = true;
+    st.connected = update.connected;
+    st.title = update.connected ? update.title : L"";
+    st.latencyMs = update.latencyMs;
+    if (update.connected) st.lastContact = std::time(nullptr);
+    if (!wasKnown || was != update.connected) {
+        const Settings settings = syncer.settings();
+        if (settings.configured()) {
+            if (update.connected) logEvent(LogLevel::Info, "conn", fmt(Str::LogConnected, settings.piUrl.c_str()));
+            else logEvent(LogLevel::Error, "conn", fmt(Str::LogUnreachable, settings.piUrl.c_str()));
+        }
+    }
     addIcon(false);
-}
-void App::menu() {
-    HMENU popup = CreatePopupMenu();
-    AppendMenuW(popup, MF_STRING | MF_GRAYED, 0, status.c_str());
-    AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(popup, MF_STRING, M_MEDIA, tr(Str::MenuMedia));
-    AppendMenuW(popup, MF_STRING, M_DEFAULT, tr(Str::MenuDefault));
-    AppendMenuW(popup, MF_STRING, M_RELOAD, tr(Str::MenuReload));
-    AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(popup, MF_STRING, M_REBOOT, tr(Str::MenuReboot));
-    AppendMenuW(popup, MF_STRING, M_SHUTDOWN, tr(Str::MenuShutdown));
-    AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(popup, MF_STRING, M_SETTINGS, tr(Str::MenuSettings));
-    AppendMenuW(popup, MF_STRING, M_OPEN_INI, tr(Str::MenuOpenIni));
-    AppendMenuW(popup, MF_STRING, M_LOAD_INI, tr(Str::MenuReloadIni));
-    AppendMenuW(popup, MF_STRING, M_EXIT, tr(Str::MenuExit));
-    POINT point{}; GetCursorPos(&point);
-    SetForegroundWindow(hwnd);
-    int id = TrackPopupMenu(popup, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, hwnd, nullptr);
-    DestroyMenu(popup);
-    if (id) command(id);
+    ui::settingsRefresh();
 }
 void App::command(int id) {
-    if (id == M_SETTINGS) { showSettings(); return; }
-    if (id == M_MEDIA) { showMedia(); return; }
-    if (id == M_OPEN_INI) {
+    switch (id) {
+    case M_SETTINGS: ui::openSettings(*this, PAGE_DASHBOARD); return;
+    case M_MEDIA: ui::openSettings(*this, PAGE_MEDIA); return;
+    case M_OPEN_INI:
         ShellExecuteW(hwnd, L"open", settingsPath().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         return;
+    case M_LOAD_INI: reloadSettings(); return;
+    case M_EXIT: DestroyWindow(hwnd); return;
     }
-    if (id == M_LOAD_INI) { reloadSettings(); return; }
-    if (id == M_EXIT) { DestroyWindow(hwnd); return; }
-    if (id == M_REBOOT || id == M_SHUTDOWN) {
-        const wchar_t* prompt = id == M_REBOOT ? tr(Str::ConfirmReboot) : tr(Str::ConfirmShutdown);
-        if (MessageBoxW(hwnd, prompt, L"Marquee-Pi", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+    const bool reboot = id == M_REBOOT;
+    const Str label = id == M_DEFAULT ? Str::MenuDefault : id == M_RELOAD ? Str::MenuReload
+                      : reboot ? Str::MenuReboot : Str::MenuShutdown;
+    if (reboot || id == M_SHUTDOWN) {
+        if (!ui::confirmDialog(ui::settingsWindow(), tr(label), tr(reboot ? Str::ConfirmReboot : Str::ConfirmShutdown),
+                               tr(reboot ? Str::ConfirmRestartButton : Str::ConfirmShutdownButton), true))
+            return;
     }
     try {
-        if (id == M_DEFAULT) sync.showDefault();
-        else if (id == M_RELOAD) sync.reloadDisplay();
-        else if (id == M_REBOOT) sync.rebootPi();
-        else sync.shutdownPi();
-    } catch (const std::exception& error) { alert(hwnd, errorText(error)); }
+        if (id == M_DEFAULT) { syncer.showDefault(); st.gameActive = false; }
+        else if (id == M_RELOAD) syncer.reloadDisplay();
+        else if (reboot) syncer.rebootPi();
+        else syncer.shutdownPi();
+        logEvent(LogLevel::Info, "api", fmt(Str::LogCommandSent, tr(label)));
+        report(tr(id == M_DEFAULT ? Str::ToastDefaultShown : id == M_RELOAD ? Str::ToastReloaded
+                  : reboot ? Str::ToastRestartSent : Str::ToastShutdownSent),
+               reboot ? ui::ToastKind::Info : id == M_SHUTDOWN ? ui::ToastKind::Warn : ui::ToastKind::Ok);
+    } catch (const std::exception& error) {
+        logEvent(LogLevel::Error, "api", fmt(Str::LogCommandFailed, tr(label), errorText(error).c_str()));
+        reportError(errorText(error));
+    }
+    ui::settingsRefresh();
 }
 void App::reloadSettings() {
     try {
@@ -305,28 +279,56 @@ void App::reloadSettings() {
             throw std::runtime_error("INI has invalid Pi URL, token or hotkey");
         setAutostart(loaded.autostart);
         setUiLanguage(resolveLanguage(loaded.language));
-        sync.settingsChanged(std::move(loaded));
-    } catch (const std::exception& error) { alert(hwnd, errorText(error), tr(Str::TitleReloadIni)); }
+        syncer.settingsChanged(std::move(loaded));
+        addIcon(false);
+        logEvent(LogLevel::Info, "conn", tr(Str::LogSettingsReloaded));
+        report(tr(Str::ToastIniReloaded), ui::ToastKind::Ok);
+    } catch (const std::exception& error) {
+        if (ui::settingsWindow()) ui::settingsToast(errorText(error), ui::ToastKind::Error);
+        else alert(hwnd, errorText(error), tr(Str::TitleReloadIni));
+    }
+    ui::settingsRefresh();
 }
 void App::onGame(GameMessage message) {
-    if (message.action == "game") sync.gameStarted(std::move(message));
-    else if (message.action == "exit") sync.gameExited();
+    if (message.action == "game") {
+        st.gameActive = true;
+        st.gameTitle = message.title;
+        st.gameMarquee = message.marquee;
+        st.gameStarted = std::time(nullptr);
+        logEvent(LogLevel::Info, "pipe", fmt(Str::LogGameStarted, message.title.c_str()));
+        syncer.gameStarted(std::move(message));
+    } else if (message.action == "exit") {
+        st.gameActive = false;
+        logEvent(LogLevel::Info, "pipe", tr(Str::LogGameEnded));
+        syncer.gameExited();
+    }
+    ui::settingsRefresh();
 }
 PiSyncEvents App::syncEvents() {
     PiSyncEvents events;
-    events.status = [this](bool isConnected, const std::string& title) {
+    events.status = [this](bool isConnected, const std::string& title, int latencyMs) {
         std::wstring shown = fromUtf8(title);
         if (isConnected && shown.empty()) shown = tr(Str::DefaultMediaTitle);
-        auto* update = new StatusUpdate{isConnected, isConnected ? shown : std::wstring()};
+        auto* update = new StatusUpdate{isConnected, isConnected ? shown : std::wstring(), latencyMs};
         if (!PostMessageW(hwnd, WM_STATUS, 0, (LPARAM)update)) delete update;
     };
     events.retroArchMenu = [this] { PostMessageW(hwnd, WM_APP_HOTKEY, 0, 0); };
-    events.warning = [](const std::string& message) { logArtworkWarning(message); };
+    events.gameSent = [](size_t bytes, int ms) {
+        logEvent(LogLevel::Info, "api", fmt(Str::LogGameSent, int((bytes + 1023) / 1024), ms));
+    };
+    events.artworkSkipped = [](const std::string& message) {
+        logArtworkWarning("not sent: " + message);
+        logEvent(LogLevel::Warn, "api", fmt(Str::LogArtworkSkipped, fromUtf8(message).c_str()));
+    };
+    events.piWarning = [](const std::string& message) {
+        logArtworkWarning(message);
+        logEvent(LogLevel::Warn, "api", fmt(Str::LogPiWarning, fromUtf8(message).c_str()));
+    };
     return events;
 }
 void App::pollLoop() {
     while (!stopping) {
-        sync.tick();
+        syncer.tick();
         for (int i = 0; i < 15 && !stopping; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
@@ -336,7 +338,12 @@ void App::pipeLoop() {
                                          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT |
                                              PIPE_REJECT_REMOTE_CLIENTS,
                                          PIPE_UNLIMITED_INSTANCES, 131072, 131072, 0, nullptr);
-        if (handle == INVALID_HANDLE_VALUE) { std::this_thread::sleep_for(std::chrono::seconds(1)); continue; }
+        if (handle == INVALID_HANDLE_VALUE) {
+            pipeUp = false;
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            continue;
+        }
+        pipeUp = true;
         {
             std::lock_guard<std::mutex> guard(pipeHandleMutex);
             activePipe = handle;
@@ -366,6 +373,7 @@ void App::pipeLoop() {
             } catch (...) {}
         }
     }
+    pipeUp = false;
 }
 void App::onShutdown() {
     std::wstring type = recentShutdownType(startedUtc);
@@ -374,514 +382,13 @@ void App::onShutdown() {
         return;
     }
     try {
-        sync.shutdownPi(3000);
+        syncer.shutdownPi(3000);
         logShutdown(L"Pi shutdown command sent; Windows type: " + type);
     } catch (const std::exception& error) {
         logShutdown(L"Pi shutdown failed: " + errorText(error));
     }
 }
 
-struct ThumbResult { std::wstring key; HBITMAP bitmap; };
-
-struct SettingsWindow {
-    struct MediaEntry { std::wstring name, key; uintmax_t size = 0; };
-
-    App* app = nullptr;
-    int initialPage = PAGE_CONNECTION;
-    HWND hwnd = nullptr, tabs = nullptr, url = nullptr, token = nullptr, hotkey = nullptr;
-    HWND retroMode = nullptr, retroPort = nullptr, autostart = nullptr, showToken = nullptr, languageBox = nullptr;
-    HWND gestures[GESTURE_COUNT]{}, mediaList = nullptr;
-    std::vector<HWND> pages[SETTINGS_PAGES];
-
-    // Media tab state. Thumbnails are rendered on worker threads and cached by
-    // name, size and modification time; only the UI thread touches these members.
-    std::vector<MediaEntry> entries;
-    std::wstring standardName, bootName, shutdownName;
-    std::map<std::wstring, HBITMAP> thumbnails;
-    std::set<std::wstring> thumbnailFailed, thumbnailPending;
-    std::vector<std::thread> workers;
-    std::atomic<bool> stopping{false};
-    HFONT boldFont = nullptr;
-
-    SettingsWindow(App* owner, int page) : app(owner), initialPage(page) {}
-    ~SettingsWindow() {
-        stopping = true;
-        for (auto& worker : workers) if (worker.joinable()) worker.join();
-        for (auto& pair : thumbnails) DeleteObject(pair.second);
-        if (boldFont) DeleteObject(boldFont);
-    }
-
-    // Adds a control to one tab page; pages other than the visible one are hidden.
-    HWND add(int page, const wchar_t* type, const wchar_t* title, DWORD style,
-             int x, int y, int width, int height, int id = 0) {
-        HWND h = control(hwnd, type, title, style, x, y, width, height, id);
-        pages[page].push_back(h);
-        return h;
-    }
-    void selectPage(int page) {
-        for (int p = 0; p < SETTINGS_PAGES; ++p)
-            for (HWND h : pages[p]) ShowWindow(h, p == page ? SW_SHOW : SW_HIDE);
-    }
-    void showPage(int page) {
-        TabCtrl_SetCurSel(tabs, page);
-        selectPage(page);
-    }
-    void create() {
-        Settings current;
-        current = app->sync.settings();
-        LOGFONTW font{};
-        GetObjectW(GetStockObject(DEFAULT_GUI_FONT), sizeof(font), &font);
-        font.lfWeight = FW_BOLD;
-        boldFont = CreateFontIndirectW(&font);
-        tabs = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_TABSTOP,
-                               10, 10, 685, 410, hwnd, (HMENU)(INT_PTR)S_TABS,
-                               GetModuleHandleW(nullptr), nullptr);
-        SendMessageW(tabs, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
-                for (int i = 0; i < SETTINGS_PAGES; ++i) {
-            TCITEMW item{};
-            item.mask = TCIF_TEXT;
-            item.pszText = const_cast<wchar_t*>(trAt(Str::TabConnection, i));
-            SendMessageW(tabs, TCM_INSERTITEMW, i, (LPARAM)&item);
-        }
-
-        // Connection
-        add(PAGE_CONNECTION, L"STATIC", tr(Str::PiAddress), 0, 25, 63, 160, 22);
-        url = add(PAGE_CONNECTION, L"EDIT", current.piUrl.c_str(), WS_BORDER | ES_AUTOHSCROLL, 190, 60, 490, 25, S_URL);
-        add(PAGE_CONNECTION, L"STATIC", tr(Str::AccessToken), 0, 25, 98, 160, 22);
-        token = add(PAGE_CONNECTION, L"EDIT", current.token.c_str(), WS_BORDER | ES_AUTOHSCROLL | ES_PASSWORD,
-                    190, 95, 490, 25, S_TOKEN);
-        showToken = add(PAGE_CONNECTION, L"BUTTON", tr(Str::ShowToken), BS_AUTOCHECKBOX, 190, 127, 135, 26, S_SHOW_TOKEN);
-        add(PAGE_CONNECTION, L"BUTTON", tr(Str::HelpToken), BS_PUSHBUTTON, 340, 127, 180, 27, S_HELP);
-
-        // Gestures
-        add(PAGE_GESTURES, L"STATIC", tr(Str::GesturesIntro), 0, 25, 55, 650, 38);
-        for (int i = 0; i < GESTURE_COUNT; ++i) {
-            int y = 102 + i * 35;
-            add(PAGE_GESTURES, L"STATIC", trAt(Str::GestureLongPress, i), 0, 25, y + 3, 160, 22);
-            HWND combo = add(PAGE_GESTURES, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL,
-                             190, y, 360, 250, S_GESTURE0 + i);
-            gestures[i] = combo;
-            for (int a = 0; a < ACTION_COUNT; ++a)
-                SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)trAt(Str::ActionNone, a));
-            std::string selected = i == 0 ? "touch_menu" : "none";
-            auto it = current.gestures.find(GESTURE_IDS[i]);
-            if (it != current.gestures.end()) selected = it->second;
-            int index = 0;
-            for (int j = 0; j < ACTION_COUNT; ++j) if (selected == ACTION_IDS[j]) index = j;
-            SendMessageW(combo, CB_SETCURSEL, index, 0);
-        }
-        add(PAGE_GESTURES, L"STATIC", tr(Str::GesturesWarning), 0, 25, 285, 650, 22);
-
-        // Media
-        mediaList = add(PAGE_MEDIA, L"LISTBOX", L"",
-                        LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | WS_BORDER | WS_VSCROLL,
-                        25, 50, 650, MEDIA_ITEM_HEIGHT * 4 + 2, D_LIST);
-        const int by = 50 + MEDIA_ITEM_HEIGHT * 4 + 12;
-        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaAdd), BS_PUSHBUTTON, 25, by, 75, 30, D_ADD);
-        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaPreview), BS_PUSHBUTTON, 108, by, 75, 30, D_PREVIEW);
-        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaRemove), BS_PUSHBUTTON, 191, by, 75, 30, D_REMOVE);
-        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaUseDefault), BS_PUSHBUTTON, 279, by, 105, 30, D_ACTIVATE);
-        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaUseBoot), BS_PUSHBUTTON, 392, by, 125, 30, D_BOOT);
-        add(PAGE_MEDIA, L"BUTTON", tr(Str::MediaUseShutdown), BS_PUSHBUTTON, 525, by, 150, 30, D_SHUTDOWN);
-
-        // RetroArch
-        add(PAGE_RETROARCH, L"STATIC", tr(Str::Hotkey), 0, 25, 65, 160, 22);
-        hotkey = add(PAGE_RETROARCH, L"EDIT", current.hotkey.c_str(), WS_BORDER | ES_AUTOHSCROLL,
-                     190, 62, 160, 25, S_HOTKEY);
-        add(PAGE_RETROARCH, L"STATIC", tr(Str::HotkeyExamples), 0, 190, 92, 480, 32);
-        add(PAGE_RETROARCH, L"STATIC", tr(Str::ControlMethod), 0, 25, 137, 160, 22);
-        retroMode = add(PAGE_RETROARCH, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL, 190, 134, 360, 120, S_RETRO_MODE);
-        SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)tr(Str::ModeKeyboard));
-        SendMessageW(retroMode, CB_ADDSTRING, 0, (LPARAM)tr(Str::ModeNetwork));
-        SendMessageW(retroMode, CB_SETCURSEL, current.retroArchNetworkControl ? 1 : 0, 0);
-        add(PAGE_RETROARCH, L"STATIC", tr(Str::NetworkPort), 0, 25, 175, 160, 22);
-        retroPort = add(PAGE_RETROARCH, L"EDIT", std::to_wstring(current.retroArchNetworkPort).c_str(),
-                        WS_BORDER | ES_AUTOHSCROLL | ES_NUMBER, 190, 172, 100, 25, S_RETRO_PORT);
-        add(PAGE_RETROARCH, L"STATIC", tr(Str::NetworkHint), 0, 190, 202, 480, 40);
-
-        // General
-        autostart = add(PAGE_GENERAL, L"BUTTON", tr(Str::Autostart), BS_AUTOCHECKBOX, 25, 62, 220, 26, S_STARTUP);
-        SendMessageW(autostart, BM_SETCHECK, current.autostart ? BST_CHECKED : BST_UNCHECKED, 0);
-        add(PAGE_GENERAL, L"BUTTON", tr(Str::OpenIni), BS_PUSHBUTTON, 25, 105, 210, 28, S_OPEN_INI);
-        add(PAGE_GENERAL, L"STATIC", tr(Str::IniHint), 0, 250, 111, 420, 36);
-        add(PAGE_GENERAL, L"STATIC", tr(Str::Language), 0, 25, 165, 160, 22);
-        languageBox = add(PAGE_GENERAL, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL, 190, 162, 300, 120, S_LANGUAGE);
-        for (Str label : {Str::LanguageAuto, Str::LanguageEnglish, Str::LanguageGerman})
-            SendMessageW(languageBox, CB_ADDSTRING, 0, (LPARAM)tr(label));
-        SendMessageW(languageBox, CB_SETCURSEL, current.language == "en" ? 1 : current.language == "de" ? 2 : 0, 0);
-        add(PAGE_GENERAL, L"STATIC", tr(Str::LanguageHint), 0, 190, 192, 480, 22);
-
-        control(hwnd, L"BUTTON", tr(Str::Save), BS_DEFPUSHBUTTON, 485, 432, 100, 30, S_SAVE);
-        control(hwnd, L"BUTTON", tr(Str::Cancel), BS_PUSHBUTTON, 595, 432, 100, 30, S_CANCEL);
-        refreshMedia();
-        showPage(initialPage);
-    }
-    void save() {
-        Settings next;
-        next = app->sync.settings();
-        next.piUrl = readText(url);
-        next.token = readText(token);
-        next.hotkey = readText(hotkey);
-        next.retroArchNetworkControl = SendMessageW(retroMode, CB_GETCURSEL, 0, 0) == 1;
-        try { next.retroArchNetworkPort = std::stoi(readText(retroPort)); }
-        catch (...) { showPage(PAGE_RETROARCH); alert(hwnd, tr(Str::InvalidPort)); return; }
-        if (next.retroArchNetworkPort < 1 || next.retroArchNetworkPort > 65535) {
-            showPage(PAGE_RETROARCH);
-            alert(hwnd, tr(Str::PortRange)); return;
-        }
-        next.autostart = SendMessageW(autostart, BM_GETCHECK, 0, 0) == BST_CHECKED;
-        {
-            const int choice = int(SendMessageW(languageBox, CB_GETCURSEL, 0, 0));
-            next.language = choice == 1 ? "en" : choice == 2 ? "de" : "auto";
-        }
-        bool menuReachable = false;
-        for (int i = 0; i < GESTURE_COUNT; ++i) {
-            int selected = int(SendMessageW(gestures[i], CB_GETCURSEL, 0, 0));
-            next.gestures[GESTURE_IDS[i]] = ACTION_IDS[selected >= 0 && selected < ACTION_COUNT ? selected : 0];
-            menuReachable = menuReachable || next.gestures[GESTURE_IDS[i]] == "touch_menu";
-        }
-        if (!next.configured()) {
-            showPage(PAGE_CONNECTION);
-            alert(hwnd, tr(Str::NotConfigured)); return;
-        }
-        if (!validHotkey(next.hotkey)) {
-            showPage(PAGE_RETROARCH); alert(hwnd, tr(Str::InvalidHotkey)); return;
-        }
-        if (!menuReachable) {
-            showPage(PAGE_GESTURES);
-            if (MessageBoxW(hwnd,
-                            tr(Str::TouchMenuUnassigned),
-                            L"Marquee-Pi", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
-        }
-        try {
-            setAutostart(next.autostart);
-            saveSettings(next);
-            setUiLanguage(resolveLanguage(next.language));
-            app->sync.settingsChanged(next);
-            DestroyWindow(hwnd);
-        } catch (const std::exception& error) { alert(hwnd, errorText(error), tr(Str::TitleSettings)); }
-    }
-
-    // ---- Medien -----------------------------------------------------------------
-    std::wstring activeName(const wchar_t* marker) {
-        try {
-            std::wstring text = fromUtf8(readFile(dataDirectory() + L"\\" + marker));
-            while (!text.empty() && (text.back() == L'\r' || text.back() == L'\n')) text.pop_back();
-            return text;
-        } catch (...) { return L""; }
-    }
-    std::wstring selectedName() {
-        int index = int(SendMessageW(mediaList, LB_GETCURSEL, 0, 0));
-        if (index == LB_ERR || index < 0 || size_t(index) >= entries.size()) return L"";
-        return entries[size_t(index)].name;
-    }
-    void refreshMedia(const std::wstring& select = L"") {
-        std::wstring keep = select.empty() ? selectedName() : select;
-        entries.clear();
-        SendMessageW(mediaList, LB_RESETCONTENT, 0, 0);
-        std::error_code ec;
-        fs::create_directories(fs::path(mediaDirectory()), ec);
-        for (fs::directory_iterator it(fs::path(mediaDirectory()), ec), end; !ec && it != end; it.increment(ec)) {
-            std::error_code fileError;
-            if (!it->is_regular_file(fileError) || fileError) continue;
-            MediaEntry entry;
-            entry.name = it->path().filename().wstring();
-            entry.size = it->file_size(fileError);
-            auto stamp = it->last_write_time(fileError).time_since_epoch().count();
-            entry.key = entry.name + L"|" + std::to_wstring(entry.size) + L"|" + std::to_wstring(stamp);
-            entries.push_back(std::move(entry));
-        }
-        std::sort(entries.begin(), entries.end(),
-                  [](const MediaEntry& a, const MediaEntry& b) { return a.name < b.name; });
-        std::vector<std::pair<std::wstring, std::wstring>> jobs;
-        for (const auto& entry : entries) {
-            SendMessageW(mediaList, LB_ADDSTRING, 0, (LPARAM)entry.name.c_str());
-            if (thumbnails.count(entry.key) || thumbnailFailed.count(entry.key) ||
-                thumbnailPending.count(entry.key)) continue;
-            thumbnailPending.insert(entry.key);
-            jobs.emplace_back(entry.key, (fs::path(mediaDirectory()) / entry.name).wstring());
-        }
-        standardName = activeName(L"active-media.txt");
-        bootName = activeName(L"boot-media.txt");
-        shutdownName = activeName(L"shutdown-media.txt");
-        for (size_t i = 0; i < entries.size(); ++i)
-            if (entries[i].name == keep) SendMessageW(mediaList, LB_SETCURSEL, i, 0);
-        startThumbnails(std::move(jobs));
-    }
-    void startThumbnails(std::vector<std::pair<std::wstring, std::wstring>> jobs) {
-        if (jobs.empty()) return;
-        HWND target = hwnd;
-        workers.emplace_back([this, target, jobs = std::move(jobs)] {
-            const bool com = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
-            for (const auto& job : jobs) {
-                if (stopping) break;
-                HBITMAP bitmap = com ? createThumbnail(job.second, THUMB_W, THUMB_H) : nullptr;
-                auto* result = new ThumbResult{job.first, bitmap};
-                if (!PostMessageW(target, WM_THUMB, 0, (LPARAM)result)) {
-                    if (bitmap) DeleteObject(bitmap);
-                    delete result;
-                }
-            }
-            if (com) CoUninitialize();
-        });
-    }
-    void thumbnailReady(ThumbResult* result) {
-        thumbnailPending.erase(result->key);
-        if (result->bitmap) {
-            auto old = thumbnails.find(result->key);
-            if (old != thumbnails.end()) DeleteObject(old->second);
-            thumbnails[result->key] = result->bitmap;
-        } else {
-            thumbnailFailed.insert(result->key);
-        }
-        delete result;
-        InvalidateRect(mediaList, nullptr, FALSE);
-    }
-    static std::wstring sizeText(uintmax_t bytes) {
-        wchar_t text[48];
-        if (bytes >= 1024 * 1024) swprintf(text, 48, L"%.1f MB", double(bytes) / (1024.0 * 1024.0));
-        else swprintf(text, 48, L"%.0f KB", std::max(1.0, double(bytes) / 1024.0));
-        for (wchar_t* c = text; *c; ++c) if (*c == L'.') *c = L',';
-        return text;
-    }
-    void drawItem(const DRAWITEMSTRUCT& d) {
-        if (d.itemID == UINT(-1) || d.itemID >= entries.size()) return;
-        const MediaEntry& entry = entries[d.itemID];
-        const bool selected = (d.itemState & ODS_SELECTED) != 0;
-        HDC dc = d.hDC;
-        RECT row = d.rcItem;
-        FillRect(dc, &row, GetSysColorBrush(selected ? COLOR_HIGHLIGHT : COLOR_WINDOW));
-        SetBkMode(dc, TRANSPARENT);
-
-        const int thumbX = row.left + 6, thumbY = row.top + (row.bottom - row.top - THUMB_H) / 2;
-        auto bitmap = thumbnails.find(entry.key);
-        if (bitmap != thumbnails.end()) {
-            HDC memory = CreateCompatibleDC(dc);
-            HGDIOBJ previous = SelectObject(memory, bitmap->second);
-            BitBlt(dc, thumbX, thumbY, THUMB_W, THUMB_H, memory, 0, 0, SRCCOPY);
-            SelectObject(memory, previous);
-            DeleteDC(memory);
-        } else {
-            RECT box{thumbX, thumbY, thumbX + THUMB_W, thumbY + THUMB_H};
-            HBRUSH gray = CreateSolidBrush(RGB(0x30, 0x30, 0x30));
-            FillRect(dc, &box, gray);
-            DeleteObject(gray);
-            SetTextColor(dc, RGB(0xb0, 0xb0, 0xb0));
-            DrawTextW(dc, thumbnailFailed.count(entry.key) ? tr(Str::MediaNoPreview) : L"…", -1, &box,
-                      DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        }
-
-        const int textX = thumbX + THUMB_W + 14;
-        std::wstring ext = fs::path(entry.name).extension().wstring();
-        std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-        std::wstring detail = std::wstring(ext == L".mp4" ? tr(Str::MediaVideo) : tr(Str::MediaImage)) +
-                              L"  ·  " + sizeText(entry.size);
-        std::wstring roles;
-        auto addRole = [&](const std::wstring& active, const wchar_t* label) {
-            if (active == entry.name) roles += (roles.empty() ? L"" : L"  ·  ") + std::wstring(label);
-        };
-        addRole(standardName, tr(Str::RoleDefault));
-        addRole(bootName, tr(Str::RoleBoot));
-        addRole(shutdownName, tr(Str::RoleShutdown));
-
-        HGDIOBJ previousFont = SelectObject(dc, boldFont);
-        SetTextColor(dc, GetSysColor(selected ? COLOR_HIGHLIGHTTEXT : COLOR_WINDOWTEXT));
-        RECT nameRect{textX, row.top + 8, row.right - 8, row.top + 28};
-        DrawTextW(dc, entry.name.c_str(), -1, &nameRect, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-        SelectObject(dc, previousFont);
-        SetTextColor(dc, GetSysColor(selected ? COLOR_HIGHLIGHTTEXT : COLOR_GRAYTEXT));
-        RECT detailRect{textX, row.top + 30, row.right - 8, row.top + 48};
-        DrawTextW(dc, detail.c_str(), -1, &detailRect, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-        if (!roles.empty()) {
-            SetTextColor(dc, selected ? GetSysColor(COLOR_HIGHLIGHTTEXT) : RGB(0x00, 0x5a, 0xb4));
-            RECT roleRect{textX, row.top + 50, row.right - 8, row.top + 68};
-            DrawTextW(dc, roles.c_str(), -1, &roleRect, DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-        }
-        HPEN line = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_BTNFACE));
-        HGDIOBJ previousPen = SelectObject(dc, line);
-        MoveToEx(dc, row.left, row.bottom - 1, nullptr);
-        LineTo(dc, row.right, row.bottom - 1);
-        SelectObject(dc, previousPen);
-        DeleteObject(line);
-    }
-    void addMedia() {
-        wchar_t chosen[32768]{};
-        std::wstring filterText = tr(Str::FilterSupported);
-        filterText.push_back(L'\0');
-        filterText += L"*.jpg;*.jpeg;*.png;*.gif;*.webp;*.mp4";
-        filterText.push_back(L'\0');
-        filterText += tr(Str::FilterAll);
-        filterText.push_back(L'\0');
-        filterText += L"*.*";
-        filterText.push_back(L'\0');
-        filterText.push_back(L'\0');
-        OPENFILENAMEW dialog{};
-        dialog.lStructSize = sizeof(dialog);
-        dialog.hwndOwner = hwnd; dialog.lpstrFilter = filterText.c_str();
-        dialog.lpstrFile = chosen; dialog.nMaxFile = 32768;
-        dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-        if (!GetOpenFileNameW(&dialog)) return;
-        try {
-            fs::path source(chosen);
-            auto length = fs::file_size(source);
-            if (length > 20 * 1024 * 1024) throw std::runtime_error("File exceeds 20 MB upload limit");
-            std::wstring ext = source.extension().wstring();
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-            if (ext != L".jpg" && ext != L".jpeg" && ext != L".png" &&
-                ext != L".gif" && ext != L".webp" && ext != L".mp4")
-                throw std::runtime_error("Unsupported file type");
-            fs::path target = fs::path(mediaDirectory()) / source.filename();
-            if (fs::exists(target)) {
-                std::wstring suffix = L"-" + std::to_wstring(GetTickCount64());
-                target = fs::path(mediaDirectory()) / (source.stem().wstring() + suffix + ext);
-            }
-            fs::copy_file(source, target);
-            refreshMedia(target.filename().wstring());
-        } catch (const std::exception& error) { alert(hwnd, errorText(error)); }
-    }
-    void previewMedia() {
-        std::wstring name = selectedName();
-        if (name.empty()) return;
-        std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
-        ShellExecuteW(hwnd, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    }
-    void activateMedia(const wchar_t* endpoint = L"/v1/default-media",
-                       const wchar_t* marker = L"active-media.txt",
-                       const wchar_t* success = nullptr,
-                       bool imageOnly = false) {
-        std::wstring name = selectedName();
-        if (name.empty()) return;
-        try {
-            Settings settings;
-            settings = app->sync.settings();
-            std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
-            std::string body = readFile(path);
-            if (body.size() > 20 * 1024 * 1024) throw std::runtime_error("File exceeds 20 MB upload limit");
-            std::wstring ext = fs::path(name).extension().wstring();
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-            if (imageOnly && ext != L".png" && ext != L".jpg" && ext != L".jpeg")
-                throw std::runtime_error("Boot splash must be a PNG or JPEG image");
-            piRequest(settings, L"POST", endpoint, body,
-                      L"application/octet-stream", L"X-File-Name: upload" + ext + L"\r\n");
-            writeFile(dataDirectory() + L"\\" + marker, toUtf8(name));
-            refreshMedia(name);
-            alert(hwnd, success ? success : tr(Str::DefaultActive));
-        } catch (const std::exception& error) { alert(hwnd, errorText(error), tr(Str::UploadFailed)); }
-    }
-    void removeMedia() {
-        std::wstring name = selectedName();
-        if (name.empty()) return;
-        if (name == activeName(L"active-media.txt") || name == activeName(L"boot-media.txt") ||
-            name == activeName(L"shutdown-media.txt")) {
-            alert(hwnd, tr(Str::ReplaceRolesFirst));
-            return;
-        }
-        std::wstring path = (fs::path(mediaDirectory()) / name).wstring();
-        if (!DeleteFileW(path.c_str())) { alert(hwnd, tr(Str::RemoveFailed)); return; }
-        refreshMedia(L"\x01");  // nothing selected afterwards
-    }
-};
-void App::showSettings(int page) {
-    if (settingsWindow) {
-        SendMessageW(settingsWindow, WM_SELECT_PAGE, WPARAM(page), 0);
-        SetForegroundWindow(settingsWindow);
-        return;
-    }
-    static bool registered = false;
-    if (!registered) {
-        WNDCLASSW klass{}; klass.lpfnWndProc = settingsProc;
-        klass.hInstance = GetModuleHandleW(nullptr); klass.lpszClassName = L"MarqueePiSettings";
-        klass.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
-        klass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        registered = RegisterClassW(&klass) != 0;
-    }
-    auto* state = new SettingsWindow(this, page);
-    constexpr DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN;
-    RECT frame{0, 0, 705, 475};
-    AdjustWindowRectEx(&frame, style, FALSE, WS_EX_DLGMODALFRAME);
-    HWND window = CreateWindowExW(WS_EX_DLGMODALFRAME, L"MarqueePiSettings",
-                                 tr(Str::WindowTitle), style,
-                                 CW_USEDEFAULT, CW_USEDEFAULT, frame.right - frame.left,
-                                 frame.bottom - frame.top, hwnd, nullptr,
-                                 GetModuleHandleW(nullptr), state);
-    if (!window) { delete state; alert(hwnd, tr(Str::SettingsOpenFailed)); return; }
-    settingsWindow = window;
-    ShowWindow(window, SW_SHOW);
-    SetForegroundWindow(window);
-}
-static LRESULT CALLBACK settingsProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
-    auto* state = (SettingsWindow*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
-    if (message == WM_NCCREATE) {
-        state = (SettingsWindow*)((CREATESTRUCTW*)lp)->lpCreateParams;
-        state->hwnd = hwnd;
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)state);
-    }
-    if (!state) return DefWindowProcW(hwnd, message, wp, lp);
-    switch (message) {
-    case WM_CREATE: state->create(); return 0;
-    case WM_SELECT_PAGE:
-        if (int(wp) >= 0 && int(wp) < SETTINGS_PAGES) state->showPage(int(wp));
-        return 0;
-    case WM_THUMB: state->thumbnailReady((ThumbResult*)lp); return 0;
-    case WM_MEASUREITEM: {
-        auto* item = (MEASUREITEMSTRUCT*)lp;
-        if (item->CtlID != D_LIST) break;
-        item->itemHeight = MEDIA_ITEM_HEIGHT;
-        return TRUE;
-    }
-    case WM_DRAWITEM: {
-        auto* item = (DRAWITEMSTRUCT*)lp;
-        if (item->CtlID != D_LIST) break;
-        state->drawItem(*item);
-        return TRUE;
-    }
-    case WM_NOTIFY: {
-        const NMHDR* header = (const NMHDR*)lp;
-        if (header->idFrom == S_TABS && header->code == TCN_SELCHANGE)
-            state->selectPage(TabCtrl_GetCurSel(state->tabs));
-        return 0;
-    }
-    case WM_COMMAND:
-        switch (LOWORD(wp)) {
-        case S_SHOW_TOKEN:
-            if (HIWORD(wp) == BN_CLICKED) {
-                bool show = SendMessageW(state->showToken, BM_GETCHECK, 0, 0) == BST_CHECKED;
-                SendMessageW(state->token, EM_SETPASSWORDCHAR, show ? 0 : L'*', 0);
-                InvalidateRect(state->token, nullptr, TRUE);
-            }
-            return 0;
-        case S_HELP:
-            alert(hwnd, tr(Str::TokenHelp), tr(Str::TokenHelpTitle));
-            return 0;
-        case D_LIST:
-            if (HIWORD(wp) == LBN_DBLCLK) state->previewMedia();
-            return 0;
-        case D_ADD: state->addMedia(); return 0;
-        case D_PREVIEW: state->previewMedia(); return 0;
-        case D_ACTIVATE: state->activateMedia(); return 0;
-        case D_BOOT:
-            state->activateMedia(L"/v1/boot-splash", L"boot-media.txt", tr(Str::BootSaved), true);
-            return 0;
-        case D_SHUTDOWN:
-            state->activateMedia(L"/v1/shutdown-media", L"shutdown-media.txt", tr(Str::ShutdownSaved));
-            return 0;
-        case D_REMOVE: state->removeMedia(); return 0;
-        case S_OPEN_INI:
-            ShellExecuteW(hwnd, L"open", settingsPath().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            return 0;
-        case S_SAVE: state->save(); return 0;
-        case S_CANCEL: DestroyWindow(hwnd); return 0;
-        }
-        break;
-    case WM_CLOSE: DestroyWindow(hwnd); return 0;
-    case WM_NCDESTROY:
-        state->app->settingsWindow = nullptr;
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-        delete state;
-        return 0;
-    }
-    return DefWindowProcW(hwnd, message, wp, lp);
-}
 static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
     auto* app = (App*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     if (message == WM_NCCREATE) {
@@ -891,10 +398,12 @@ static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) 
     if (!app) return DefWindowProcW(hwnd, message, wp, lp);
     if (message == app->taskbarCreated && app->taskbarCreated) { app->addIcon(true); return 0; }
     switch (message) {
-    case WM_COMMAND: app->command(LOWORD(wp)); return 0;
     case WM_TRAY:
-        if (LOWORD(lp) == WM_RBUTTONUP || LOWORD(lp) == WM_CONTEXTMENU) app->menu();
-        else if (LOWORD(lp) == WM_LBUTTONDBLCLK) app->showMedia();
+        if (LOWORD(lp) == WM_LBUTTONUP || LOWORD(lp) == WM_RBUTTONUP || LOWORD(lp) == WM_CONTEXTMENU) {
+            POINT cursor{};
+            GetCursorPos(&cursor);
+            ui::showFlyout(*app, cursor);
+        } else if (LOWORD(lp) == WM_LBUTTONDBLCLK) app->command(M_MEDIA);
         return 0;
     case WM_STATUS: {
         auto* status = (StatusUpdate*)lp;
@@ -905,8 +414,8 @@ static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) 
         app->onGame(std::move(*game)); delete game; return 0;
     }
     case WM_APP_HOTKEY: {
-        Settings settings = app->sync.settings();
-        if (app->sync.inGame()) {
+        Settings settings = app->syncer.settings();
+        if (app->syncer.inGame()) {
             if (settings.retroArchNetworkControl) sendRetroArchNetworkCommand(settings.retroArchNetworkPort);
             else sendRetroArchHotkey(settings.hotkey);
         }
@@ -928,6 +437,14 @@ static LRESULT CALLBACK mainProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) 
     }
     return DefWindowProcW(hwnd, message, wp, lp);
 }
+
+static void enableDpiAwareness() {
+    typedef BOOL(WINAPI * SetContextFn)(HANDLE);
+    const auto setContext = reinterpret_cast<SetContextFn>(
+        reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetProcessDpiAwarenessContext")));
+    if (setContext) setContext(reinterpret_cast<HANDLE>(-4));  // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR commandLine, int) {
     try {
         Settings settings = loadSettings();
@@ -941,22 +458,32 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR commandLine, int) {
             }
             catch (...) { return 1; }
         }
-        INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES | ICC_TAB_CLASSES};
-        InitCommonControlsEx(&controls);
-        App app(std::move(settings));
-        currentApp = &app;
-        if (!app.start(instance)) {
-            alert(nullptr, tr(Str::StartFailed));
-            return 1;
+        enableDpiAwareness();
+        ui::startup(instance);
+        ui::setTheme(settings.theme);
+        int exitCode = 0;
+        {
+            App app(std::move(settings));
+            currentApp = &app;
+            if (!app.start(instance)) {
+                alert(nullptr, tr(Str::StartFailed));
+                exitCode = 1;
+            } else {
+                MSG message{};
+                while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+                    HWND dialog = ui::settingsWindow();
+                    if (dialog && IsDialogMessageW(dialog, &message)) continue;
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+                exitCode = int(message.wParam);
+            }
+            app.close();
+            currentApp = nullptr;
         }
-        MSG message{};
-        while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-            TranslateMessage(&message);
-            DispatchMessageW(&message);
-        }
-        app.close();
-        currentApp = nullptr;
-        return int(message.wParam);
+        ThumbCache::instance().shutdown();
+        ui::shutdown();
+        return exitCode;
     } catch (const std::exception& error) {
         alert(nullptr, errorText(error), tr(Str::TitleStartupError));
         return 1;

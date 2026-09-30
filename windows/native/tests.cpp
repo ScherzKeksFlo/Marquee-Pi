@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "event_log.hpp"
 #include "pi_sync.hpp"
 #include "strings.hpp"
 #include "thumbnail.hpp"
@@ -177,6 +178,24 @@ GameMessage piGame(const wchar_t* title = L"Game") {
 }
 void ticks(PiSync& sync, int n) { for (int i = 0; i < n; ++i) sync.tick(); }
 HttpResult failWith(DWORD status) { throw HttpError(status, "scripted"); }
+
+void eventLogTests() {
+    EventLog log;
+    assert(log.snapshot().empty());
+    log.add(LogLevel::Info, "pipe", L"first");
+    log.add(LogLevel::Error, "conn", L"second");
+    auto entries = log.snapshot();  // newest first
+    assert(entries.size() == 2 && entries[0].message == L"second" && entries[0].level == LogLevel::Error);
+    assert(entries[1].source == "pipe" && entries[0].time >= entries[1].time);
+    const unsigned before = log.revision();
+    for (size_t i = 0; i < EventLog::CAPACITY + 10; ++i) log.add(LogLevel::Warn, "api", std::to_wstring(i));
+    entries = log.snapshot();
+    assert(entries.size() == EventLog::CAPACITY);  // the ring drops the oldest entries
+    assert(entries.front().message == std::to_wstring(EventLog::CAPACITY + 9));
+    assert(log.revision() > before);
+    log.clear();
+    assert(log.snapshot().empty());
+}
 
 void piSyncTests() {
     // A game started while online is sent once; the first tick also pushes gestures and language.
@@ -388,7 +407,7 @@ void piSyncTests() {
         };
         std::vector<bool> seen;
         PiSyncEvents events;
-        events.status = [&](bool connected, const std::string&) { seen.push_back(connected); };
+        events.status = [&](bool connected, const std::string&, int) { seen.push_back(connected); };
         PiSync sync(piSettings(), pi, events);
         ticks(sync, 8);  // cycles 0..7
         assert((seen == std::vector<bool>{false, false}));
@@ -396,20 +415,51 @@ void piSyncTests() {
         ticks(sync, 1);
         assert((seen == std::vector<bool>{false, false, true}));
     }
-    // Status events carry the Pi's game title (empty for the default media).
+    // Status events carry the Pi's game title (empty for the default media) and the round trip.
     {
         FakePi pi;
         std::vector<std::pair<bool, std::string>> seen;
+        int latency = -2;
         PiSyncEvents events;
-        events.status = [&](bool connected, const std::string& title) { seen.push_back({connected, title}); };
+        events.status = [&](bool connected, const std::string& title, int ms) {
+            seen.push_back({connected, title});
+            latency = ms;
+        };
         PiSync sync(piSettings(), pi, events);
         ticks(sync, 1);
         assert(seen.size() == 1 && seen[0].first && seen[0].second.empty());
+        assert(latency >= 0);
+    }
+    // Offline status events report no latency; accepted games report their size.
+    {
+        FakePi pi;
+        pi.handler = [&](const FakePi::Call& c) -> HttpResult {
+            if (c.path == L"/v1/status") throw std::runtime_error("unreachable");
+            return {};
+        };
+        int latency = 5;
+        PiSyncEvents events;
+        events.status = [&](bool, const std::string&, int ms) { latency = ms; };
+        PiSync offline(piSettings(), pi, events);
+        ticks(offline, 1);
+        assert(latency == -1);
+    }
+    {
+        FakePi pi;
+        size_t sentBytes = 0;
+        int sentCalls = 0;
+        PiSyncEvents events;
+        events.gameSent = [&](size_t bytes, int) { sentBytes = bytes; ++sentCalls; };
+        PiSync sync(piSettings(), pi, events);
+        sync.gameStarted(piGame());
+        ticks(sync, 2);
+        assert(sentCalls == 1 && sentBytes > 0);
     }
 }
 }  // namespace
 
 int main() {
+    eventLogTests();
     piSyncTests();
     using namespace mini;
     static_assert(MARQUEE_PI_ARTWORK_BUDGET_BYTES == 24379392);

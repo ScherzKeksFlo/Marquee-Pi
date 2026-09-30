@@ -10,7 +10,7 @@ A companion display for LaunchBox/Big Box on Windows 11 and a Raspberry Pi 3 B+ 
 - When a game starts, the Windows program sends the game identifier and matching artwork to the Pi. The display shows a marquee, or alternatively a banner or logo.
 - A short tap switches between the marquee and the control panel view during the game. Four swipe directions (top to bottom, bottom to top, left to right, right to left) can be assigned independently in the Windows tool to image views or the RetroArch menu. For RetroArch, a freely configurable keyboard shortcut and a local network command are available. When the game ends, the default logo appears again.
 - When Windows restarts, the Pi stays on; a lost connection only resets the display.
-- A Windows icon in the notification area shows the connection status and offers Reload display, Restart Pi, Shut down Pi and Show default logo. **Manage media…** lets you select the default media, boot splash and shutdown media independently and transfer them to the Pi.
+- A Windows icon in the notification area shows the connection status. Its flyout offers Reload display, Restart Pi, Shut down Pi and Show default logo, and opens the settings window with a dashboard, the media manager (default media, boot splash and shutdown media independently, with upload progress) and a log of recent events.
 - On a full shutdown via Big Box or the Windows Start menu, the Pi shows the stored shutdown image or video and then shuts itself down. The wireless power socket can then be switched off manually.
 
 ## Components

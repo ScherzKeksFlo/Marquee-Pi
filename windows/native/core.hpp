@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <functional>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -20,6 +21,9 @@ struct Settings {
     bool autostart = false;
     // "auto" follows the Windows display language, otherwise "en" or "de".
     std::string language = "auto";
+    // Look of the windows: "dark" (default), "light" or "auto" (follow Windows); navigation "sidebar" or "tabs".
+    std::string theme = "dark";
+    std::string navigation = "sidebar";
     // Long press keeps opening the Pi touch menu unless it is reassigned.
     std::map<std::string, std::string> gestures{{"long-press", "touch_menu"}};
     bool configured() const;
@@ -64,7 +68,8 @@ bool sendRetroArchNetworkCommand(int port);
 HttpResult piRequest(const Settings& settings, const std::wstring& method,
                      const std::wstring& path, const std::string& body = {},
                      const std::wstring& contentType = L"",
-                     const std::wstring& extraHeader = L"", int timeoutMs = 8000);
+                     const std::wstring& extraHeader = L"", int timeoutMs = 8000,
+                     const std::function<void(size_t sent, size_t total)>& progress = nullptr);
 std::string gamePayload(const GameMessage& game);
 // Reasons why artwork was left out of the last payloads built on this thread; clears the list.
 std::vector<std::string> takeArtworkErrors();

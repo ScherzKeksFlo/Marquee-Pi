@@ -359,6 +359,11 @@ Settings loadSettings() {
             else if (key == "language") {
                 const std::string choice = lower(value);
                 s.language = choice == "en" || choice == "de" ? choice : "auto";
+            } else if (key == "theme") {
+                const std::string choice = lower(value);
+                s.theme = choice == "light" || choice == "auto" ? choice : "dark";
+            } else if (key == "navigation") {
+                s.navigation = lower(value) == "tabs" ? "tabs" : "sidebar";
             }
         }
     }
@@ -384,6 +389,8 @@ void saveSettings(const Settings& s) {
                        "\r\n\r\n[General]\r\nStartWithWindows=" +
                        std::string(s.autostart ? "true" : "false") +
                        "\r\nLanguage=" + (s.language == "en" || s.language == "de" ? s.language : "auto") +
+                       "\r\nTheme=" + (s.theme == "light" || s.theme == "auto" ? s.theme : "dark") +
+                       "\r\nNavigation=" + (s.navigation == "tabs" ? "tabs" : "sidebar") +
                        "\r\n";
     std::wstring temp = settingsPath() + L".tmp";
     writeFile(temp, data);
@@ -469,7 +476,8 @@ bool sendRetroArchNetworkCommand(int port) {
 }
 HttpResult piRequest(const Settings& s, const std::wstring& method, const std::wstring& path,
                      const std::string& body, const std::wstring& contentType,
-                     const std::wstring& extraHeader, int timeoutMs) {
+                     const std::wstring& extraHeader, int timeoutMs,
+                     const std::function<void(size_t sent, size_t total)>& progress) {
     if (!s.configured()) throw std::runtime_error("Set up the Pi address and token first");
     URL_COMPONENTS parts{};
     parts.dwStructSize = sizeof(parts);
@@ -488,10 +496,25 @@ HttpResult piRequest(const Settings& s, const std::wstring& method, const std::w
     WinHttpSetTimeouts(request, 3000, 3000, timeoutMs, timeoutMs);
     std::wstring headers = L"X-Marquee-Token: " + s.token + L"\r\n" + extraHeader;
     if (!contentType.empty()) headers += L"Content-Type: " + contentType + L"\r\n";
+    // With a progress callback the body goes out in chunks so the caller can show a bar.
+    const bool chunked = progress && body.size() > 64 * 1024;
     if (!WinHttpSendRequest(request, headers.c_str(), DWORD(-1),
-                            body.empty() ? nullptr : (void*)body.data(), DWORD(body.size()),
-                            DWORD(body.size()), 0) || !WinHttpReceiveResponse(request, nullptr))
+                            body.empty() || chunked ? nullptr : (void*)body.data(),
+                            chunked ? 0 : DWORD(body.size()), DWORD(body.size()), 0))
         throw std::runtime_error("Pi did not respond");
+    if (chunked) {
+        size_t sent = 0;
+        progress(0, body.size());
+        while (sent < body.size()) {
+            const DWORD piece = DWORD(std::min<size_t>(64 * 1024, body.size() - sent));
+            DWORD written = 0;
+            if (!WinHttpWriteData(request, body.data() + sent, piece, &written) || !written)
+                throw std::runtime_error("Pi did not respond");
+            sent += written;
+            progress(sent, body.size());
+        }
+    }
+    if (!WinHttpReceiveResponse(request, nullptr)) throw std::runtime_error("Pi did not respond");
     HttpResult result;
     DWORD size = sizeof(result.status);
     if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,

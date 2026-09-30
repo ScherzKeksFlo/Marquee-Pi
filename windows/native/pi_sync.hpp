@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -26,11 +27,14 @@ struct WinHttpTransport : PiTransport {
 // What PiSync reports back. Both callbacks run on the thread that calls tick(), never
 // while the internal lock is held.
 struct PiSyncEvents {
-    // title is empty while the Pi shows its default media.
-    std::function<void(bool connected, const std::string& title)> status;
+    // title is empty while the Pi shows its default media; latencyMs is -1 when offline.
+    std::function<void(bool connected, const std::string& title, int latencyMs)> status;
     std::function<void()> retroArchMenu;
-    // Artwork that was left out and Pi warnings about the last game payload.
-    std::function<void(const std::string& message)> warning;
+    // A game was accepted by the Pi: request size and round trip.
+    std::function<void(size_t bytes, int ms)> gameSent;
+    // Artwork that was left out, and warnings the Pi returned for the last game payload.
+    std::function<void(const std::string& message)> artworkSkipped;
+    std::function<void(const std::string& message)> piWarning;
 };
 
 // Reconciles what Windows wants the Pi to show (current game session, gesture and
