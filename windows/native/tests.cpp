@@ -345,6 +345,26 @@ void piSyncTests() {
         assert(sentNewGesture);
         assert(sync.settings().gestures.count("swipe-up") == 1);
     }
+    // Settings changed while the game is being sent (new Pi address or token): send it again.
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        bool changed = false;
+        pi.handler = [&](const FakePi::Call& c) -> HttpResult {
+            if (c.path == L"/v1/game" && !changed) {
+                changed = true;
+                sync.settingsChanged(piSettings());
+            }
+            return {};
+        };
+        sync.gameStarted(piGame());
+        ticks(sync, 1);
+        assert(pi.count(L"/v1/game") == 1);
+        ticks(sync, 1);
+        assert(pi.count(L"/v1/game") == 2);
+        ticks(sync, 1);
+        assert(pi.count(L"/v1/game") == 2);
+    }
     // Tray commands: showDefault drops the game and cancels the pending default.
     {
         FakePi pi;

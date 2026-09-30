@@ -40,11 +40,11 @@ void PiSync::tick() {
     static const std::wstring json = L"application/json; charset=utf-8";
     Settings copy;
     std::optional<GameMessage> now;
-    uint64_t version = 0;
+    uint64_t version = 0, configAtStart = 0;
     bool dirty, sync, reset;
     {
         std::lock_guard<std::mutex> guard(mutex);
-        copy = current; now = game; version = gameVersion;
+        copy = current; now = game; version = gameVersion; configAtStart = configVersion;
         dirty = gestureDirty; sync = needsSync; reset = pendingDefault;
     }
     const bool statusCycle = cycle % 7 == 0;
@@ -93,11 +93,11 @@ void PiSync::tick() {
                     for (const auto& warning : gameWarnings(response.body))
                         if (events.warning) events.warning(warning);
                     std::lock_guard<std::mutex> guard(mutex);
-                    if (gameVersion == version) needsSync = false;
+                    if (gameVersion == version && configVersion == configAtStart) needsSync = false;
                 } catch (const HttpError& error) {
                     if (error.status >= 400 && error.status < 500) {
                         std::lock_guard<std::mutex> guard(mutex);
-                        if (gameVersion == version) needsSync = false;
+                        if (gameVersion == version && configVersion == configAtStart) needsSync = false;
                     } else {
                         online = false;
                     }
