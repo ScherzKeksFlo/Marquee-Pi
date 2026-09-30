@@ -231,9 +231,7 @@ void piSyncTests() {
         PiSync sync(piSettings(), pi);
         sync.gameStarted(piGame());
         ticks(sync, 10);
-        // Tick 0 sends it; seeing the Pi instance for the first time queues one more send on
-        // tick 1. Both are rejected and cleared, so nothing follows.
-        assert(pi.count(L"/v1/game") == 2);
+        assert(pi.count(L"/v1/game") == 1);
     }
     {
         FakePi pi;
@@ -248,20 +246,18 @@ void piSyncTests() {
         ticks(sync, 1);  // cycle 7
         assert(pi.count(L"/v1/game") == 2);
     }
-    // First sight of a Pi instance (and every restart of it) resends game and gestures.
+    // A restarted Pi (new instance id) gets game and gestures again; its first sighting does not.
     {
         FakePi pi;
         PiSync sync(piSettings(), pi);
         sync.gameStarted(piGame());
         ticks(sync, 1);
         assert(pi.count(L"/v1/game") == 1 && pi.count(L"/v1/gesture-config") == 1);
-        ticks(sync, 1);  // instance "" -> "a" flagged a resend at the end of tick 0
-        assert(pi.count(L"/v1/game") == 2 && pi.count(L"/v1/gesture-config") == 2);
-        ticks(sync, 1);
-        assert(pi.count(L"/v1/game") == 2);
+        ticks(sync, 2);
+        assert(pi.count(L"/v1/game") == 1 && pi.count(L"/v1/gesture-config") == 1);
         pi.instance = "b";  // Pi restarted
         ticks(sync, 2);
-        assert(pi.count(L"/v1/game") == 3 && pi.count(L"/v1/gesture-config") == 3);
+        assert(pi.count(L"/v1/game") == 2 && pi.count(L"/v1/gesture-config") == 2);
     }
     // A Pi without language support (404) still counts as configured; other errors keep gestures dirty.
     {
@@ -272,8 +268,8 @@ void piSyncTests() {
         };
         PiSync sync(piSettings(), pi);
         ticks(sync, 3);
-        assert(pi.count(L"/v1/gesture-config") == 2);  // tick 0 + the first-instance resend
-        assert(pi.count(L"/v1/language") == 2);
+        assert(pi.count(L"/v1/gesture-config") == 1);
+        assert(pi.count(L"/v1/language") == 1);
     }
     {
         FakePi pi;

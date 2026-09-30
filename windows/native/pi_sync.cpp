@@ -109,10 +109,15 @@ void PiSync::tick() {
             auto payload = mini::parse(response.body);
             std::string nextInstance = payload.get("instance_id").value();
             if (nextInstance != instance) {
+                // The first instance we see was already served by this tick; only a
+                // changed instance means the Pi restarted and lost its state.
+                const bool restarted = !instance.empty();
                 instance = nextInstance; cursor = 0; cursorReady = false;
-                std::lock_guard<std::mutex> guard(mutex);
-                gestureDirty = true;
-                if (game) needsSync = true;
+                if (restarted) {
+                    std::lock_guard<std::mutex> guard(mutex);
+                    gestureDirty = true;
+                    if (game) needsSync = true;
+                }
             } else {
                 const auto& received = payload.get("events").items;
                 for (const auto& event : received) {
