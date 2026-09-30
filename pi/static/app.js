@@ -153,7 +153,7 @@ const TEXT = {
     view_marquee: "Marquee", view_box_art: "Box Art", view_logo: "Logo", view_controls: "Controls",
     view_default: "Default", section_view: "View", section_brightness: "Brightness", section_status: "Status",
     arcade_pc: "Arcade PC", connected: "connected", disconnected: "not connected", address: "Address",
-    unknown: "unknown", game: "Game", version: "Version", system_button: "System …", system: "System",
+    unknown: "unknown", game: "Game", core: "Core", rom: "ROM", version: "Version", system_button: "System …", system: "System",
     back: "‹ Back", restart: "Restart", shutdown: "Shut down", yes: "Yes", cancel: "Cancel",
     confirm_restart: "Really restart the Pi?", confirm_shutdown: "Really shut down the Pi?"
   },
@@ -161,7 +161,7 @@ const TEXT = {
     view_marquee: "Marquee", view_box_art: "Box Art", view_logo: "Logo", view_controls: "Controls",
     view_default: "Standard", section_view: "Ansicht", section_brightness: "Helligkeit", section_status: "Status",
     arcade_pc: "Arcade-PC", connected: "verbunden", disconnected: "nicht verbunden", address: "Adresse",
-    unknown: "unbekannt", game: "Spiel", version: "Version", system_button: "System …", system: "System",
+    unknown: "unbekannt", game: "Spiel", core: "Core", rom: "ROM", version: "Version", system_button: "System …", system: "System",
     back: "‹ Zurück", restart: "Neustart", shutdown: "Herunterfahren", yes: "Ja", cancel: "Abbrechen",
     confirm_restart: "Pi wirklich neu starten?", confirm_shutdown: "Pi wirklich herunterfahren?"
   }
@@ -279,6 +279,8 @@ function renderMenu() {
          info ? (info.client_connected ? "ok" : "bad") : "");
   addRow(t("address"), info?.addresses?.length ? info.addresses.join("  ") : t("unknown"));
   addRow(t("game"), state.game_title || "–");
+  if (state.game_title && state.game_core) addRow(t("core"), state.game_core);
+  if (state.game_title && state.game_rom) addRow(t("rom"), state.game_rom);
   addRow(t("version"), info?.app_version ?? "…");
   body.appendChild(status);
 

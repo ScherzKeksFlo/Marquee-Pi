@@ -155,6 +155,50 @@ class StateTests(unittest.TestCase):
             self.assertIsNone(DisplayState(Path(directory), 60).active_file)
 
 
+class GameDetailsTests(unittest.TestCase):
+    def test_core_and_rom_are_kept_and_cleared(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = DisplayState(Path(directory), 60)
+            state.set_game("Street Fighter II", {}, "FinalBurn Neo", "sf2ce.zip")
+            described = state.describe()
+            self.assertEqual((described["game_core"], described["game_rom"]), ("FinalBurn Neo", "sf2ce.zip"))
+            state.set_game("Notepad", {})
+            described = state.describe()
+            self.assertEqual((described["game_core"], described["game_rom"]), ("", ""))
+            state.set_game("Again", {}, "core", "rom.zip")
+            state.show_default()
+            self.assertEqual(state.describe()["game_rom"], "")
+            state.set_game("Again", {}, "core", "rom.zip")
+            state.show_shutdown()
+            self.assertEqual(state.describe()["game_core"], "")
+
+    def test_game_request_accepts_optional_core_and_rom(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = DisplayState(Path(directory), 60)
+            server = Server(("127.0.0.1", 0), state, "a" * 32)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                def post(body):
+                    connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+                    connection.request("POST", "/v1/game", body=json.dumps(body),
+                                       headers={"X-Marquee-Token": "a" * 32, "Content-Type": "application/json"})
+                    return connection.getresponse().status
+
+                self.assertEqual(post({"title": "G", "core": " FinalBurn Neo ", "rom": "sf2ce.zip"}), 200)
+                described = state.describe()
+                self.assertEqual((described["game_core"], described["game_rom"]), ("FinalBurn Neo", "sf2ce.zip"))
+                self.assertEqual(post({"title": "G", "core": 5, "rom": ["x"]}), 200)  # wrong types are ignored
+                described = state.describe()
+                self.assertEqual((described["game_core"], described["game_rom"]), ("", ""))
+                self.assertEqual(post({"title": "G", "core": "c" * 500, "rom": "r" * 500}), 200)
+                described = state.describe()
+                self.assertEqual((len(described["game_core"]), len(described["game_rom"])), (120, 200))
+            finally:
+                server.shutdown()
+                server.server_close()
+
+
 class ApiTests(unittest.TestCase):
     def test_auth_game_and_default(self):
         with tempfile.TemporaryDirectory() as directory:

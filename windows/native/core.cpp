@@ -548,6 +548,8 @@ std::string gamePayload(const GameMessage& game) {
     body["controls"] = artwork(game.controls, budget);
     body["box_art"] = artwork(game.boxArt, budget);
     body["logo"] = artwork(game.logo, budget);
+    if (!game.core.empty()) body["core"] = mini::Json::str(toUtf8(game.core));
+    if (!game.rom.empty()) body["rom"] = mini::Json::str(toUtf8(game.rom));
     return body.dump();
 }
 std::vector<std::string> gameWarnings(const std::string& response) {
@@ -586,6 +588,8 @@ GameMessage parseGameMessage(const std::string& json) {
     game.controls = get("ControlsPath");
     game.boxArt = get("BoxArtPath");
     game.logo = get("LogoPath");
+    game.core = get("Core");
+    game.rom = get("Rom");
     return game;
 }
 std::wstring errorText(const std::exception& error) {

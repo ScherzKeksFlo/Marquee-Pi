@@ -36,6 +36,8 @@ struct GameMessage {
     std::wstring controls;
     std::wstring boxArt;
     std::wstring logo;
+    std::wstring core;  // libretro core name, empty for other emulators
+    std::wstring rom;   // ROM file name
 };
 
 struct HttpResult {

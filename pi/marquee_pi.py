@@ -145,6 +145,8 @@ class DisplayState:
         self.boot_splash_file = self.data_dir / "boot-splash"
         self.shutdown_file, self.shutdown_duration = self._load_media_slot("shutdown.json")
         self.game_title = None
+        self.game_core = ""
+        self.game_rom = ""
         self.game_media: dict[str, tuple[bytes, str]] = {}
         self.game_hashes: dict[str, str] = {}
         self.last_heartbeat = 0.0
@@ -320,6 +322,8 @@ class DisplayState:
             return {
                 "version": self.version,
                 "game_title": self.game_title,
+                "game_core": self.game_core,
+                "game_rom": self.game_rom,
                 "has_marquee": "marquee" in self.game_media,
                 "has_controls": "controls" in self.game_media,
                 "has_box_art": "box_art" in self.game_media,
@@ -342,16 +346,20 @@ class DisplayState:
             self.game_title = None
             self.game_media = {}
             self.game_hashes = {}
+            self.game_core = ""
+            self.game_rom = ""
             self.version += 1
 
     def heartbeat(self) -> None:
         with self.lock:
             self.last_heartbeat = time.monotonic()
 
-    def set_game(self, title: str, media: dict[str, tuple[bytes, str]]) -> None:
+    def set_game(self, title: str, media: dict[str, tuple[bytes, str]], core: str = "", rom: str = "") -> None:
         with self.lock:
             self.shutting_down = False
             self.game_title = title
+            self.game_core = core
+            self.game_rom = rom
             self.game_media = media
             # Content hash: a stable cache key across restarts, unlike the state version.
             self.game_hashes = {kind: hashlib.sha1(data).hexdigest()[:12]
@@ -365,6 +373,8 @@ class DisplayState:
             self.game_title = None
             self.game_media = {}
             self.game_hashes = {}
+            self.game_core = ""
+            self.game_rom = ""
             self.version += 1
 
     def show_shutdown(self) -> None:
@@ -373,6 +383,8 @@ class DisplayState:
             self.game_title = None
             self.game_media = {}
             self.game_hashes = {}
+            self.game_core = ""
+            self.game_rom = ""
             self.version += 1
 
     def reload(self) -> None:
@@ -752,7 +764,12 @@ class Handler(BaseHTTPRequestHandler):
                         media[kind] = (data, mime)
                     except (binascii.Error, KeyError, TypeError, ValueError) as exc:
                         warnings.append({"kind": kind, "error": str(exc) or "Invalid artwork"})
-                self.server.state.set_game(title, media)
+                # Optional details of emulated games; other types are ignored.
+                core = payload.get("core")
+                rom = payload.get("rom")
+                core = core.strip()[:120] if isinstance(core, str) else ""
+                rom = rom.strip()[:200] if isinstance(rom, str) else ""
+                self.server.state.set_game(title, media, core, rom)
                 self._json(200, {"ok": True, "warnings": warnings})
                 return
             if path == "/v1/language":

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Unbroken.LaunchBox.Plugins;
 using Unbroken.LaunchBox.Plugins.Data;
@@ -39,7 +40,10 @@ namespace MarqueePiLaunchBox
                 MarqueePath = marquee,
                 ControlsPath = controls,
                 BoxArtPath = boxArt,
-                LogoPath = logo
+                LogoPath = logo,
+                // Only emulated games have a ROM and a core; native Windows games report neither.
+                Core = emulator == null ? null : CoreName(game, emulator),
+                Rom = emulator == null ? null : RomName(game)
             };
             Send(message);
         }
@@ -47,6 +51,48 @@ namespace MarqueePiLaunchBox
         public void OnGameExited()
         {
             Send(new GameMessage { Action = "exit" });
+        }
+
+        // File name of the ROM, e.g. "sf2ce.zip".
+        private static string? RomName(IGame game)
+        {
+            try
+            {
+                var name = Path.GetFileName(game.ApplicationPath ?? "");
+                return string.IsNullOrWhiteSpace(name) ? null : name;
+            }
+            catch { return null; }
+        }
+
+        // The libretro core from the launch command line (-L "cores\fbneo_libretro.dll"): the name from
+        // RetroArch's info file ("FinalBurn Neo") when it can be found, else the file name ("fbneo").
+        private static string? CoreName(IGame game, IEmulator emulator)
+        {
+            try
+            {
+                var match = Regex.Match(game.GetEffectiveCommandLine() ?? "",
+                    "(?:^|\\s)(?:-L|--libretro)(?:=|\\s+)(?:\"([^\"]+)\"|(\\S+))");
+                if (!match.Success) return null;
+                var library = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+                var stem = Path.GetFileNameWithoutExtension(library);
+                if (string.IsNullOrEmpty(stem)) return null;
+                var executable = Resolve(emulator.ApplicationPath);
+                if (executable != null)
+                {
+                    var info = Path.Combine(Path.GetDirectoryName(executable) ?? "", "info", stem + ".info");
+                    if (File.Exists(info))
+                    {
+                        foreach (var line in File.ReadLines(info))
+                        {
+                            var name = Regex.Match(line, "^\\s*corename\\s*=\\s*\"(.+)\"\\s*$");
+                            if (name.Success) return name.Groups[1].Value;
+                        }
+                    }
+                }
+                const string suffix = "_libretro";
+                return stem.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) ? stem.Substring(0, stem.Length - suffix.Length) : stem;
+            }
+            catch { return null; }
         }
 
         private static string? FirstImage(IGame game, string imageType)
@@ -135,6 +181,8 @@ namespace MarqueePiLaunchBox
             [DataMember] public string? ControlsPath { get; set; }
             [DataMember] public string? BoxArtPath { get; set; }
             [DataMember] public string? LogoPath { get; set; }
+            [DataMember] public string? Core { get; set; }
+            [DataMember] public string? Rom { get; set; }
         }
     }
 }
