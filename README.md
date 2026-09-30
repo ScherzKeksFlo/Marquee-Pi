@@ -13,6 +13,29 @@ A companion display for LaunchBox/Big Box on Windows 11 and a Raspberry Pi 3 B+ 
 - A Windows icon in the notification area shows the connection status. Its flyout offers Reload display, Restart Pi, Shut down Pi and Show default logo, and opens the settings window with a dashboard, the media manager (default media, boot splash and shutdown media independently, with upload progress) and a log of recent events.
 - On a full shutdown via Big Box or the Windows Start menu, the Pi shows the stored shutdown image or video and then shuts itself down. The wireless power socket can then be switched off manually.
 
+## Screenshots
+
+The Windows app: the dashboard shows what the Pi displays, the connection and the current game; the media page manages the default media, the boot splash and the shutdown media.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/windows-dashboard.png" alt="Dashboard of the Windows app"></td>
+    <td width="50%"><img src="docs/images/windows-media.png" alt="Media page of the Windows app"></td>
+  </tr>
+</table>
+
+The tray flyout of the Windows app and the touch menu on the Pi display (800 × 480, long press on the display). The touch menu shows the running game with its libretro core and ROM.
+
+<table>
+  <tr>
+    <td width="24%" valign="top"><img src="docs/images/windows-tray-menu.png" alt="Tray flyout of the Windows app"></td>
+    <td width="38%" valign="top"><img src="docs/images/pi-touch-menu.png" alt="Touch menu on the Pi display"></td>
+    <td width="38%" valign="top"><img src="docs/images/pi-touch-menu-system.png" alt="System page of the touch menu with restart and shut down"></td>
+  </tr>
+</table>
+
+The screenshots use generated demo media and a local stand-in for the Pi; the Pi menu was rendered in a browser at the display's resolution.
+
 ## Components
 
 | Folder | Purpose |
