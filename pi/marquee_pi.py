@@ -48,6 +48,11 @@ STATIC_MIME = {
     "gesture.js": "text/javascript; charset=utf-8",
     "fallback.svg": "image/svg+xml",
 }
+# Fonts of the touch menu, bundled in static/fonts (SIL Open Font License).
+STATIC_FONTS = frozenset({
+    "Silkscreen-Regular.ttf", "ChakraPetch-Regular.ttf", "ChakraPetch-SemiBold.ttf", "ChakraPetch-Bold.ttf",
+    "IBMPlexMono-Regular.ttf", "IBMPlexMono-Medium.ttf",
+})
 MEDIA_CACHE = "public, max-age=31536000, immutable"
 
 
@@ -665,6 +670,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, media[0], media[1], MEDIA_CACHE)
             else:
                 self._json(404, {"error": "No game artwork"})
+            return
+        if path.startswith("/ui/fonts/") and path[len("/ui/fonts/"):] in STATIC_FONTS:
+            try:
+                data = (STATIC / "fonts" / path[len("/ui/fonts/"):]).read_bytes()
+            except OSError:
+                self._json(404, {"error": "Not found"})
+                return
+            self._send(200, data, "font/ttf", "no-cache")
             return
         if path in ("/ui/", "/ui/index.html", "/ui/app.js", "/ui/gesture.js", "/ui/fallback.svg"):
             filename = "index.html" if path == "/ui/" else path.split("/")[-1]

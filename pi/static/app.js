@@ -221,17 +221,19 @@ function renderMenu() {
     head.appendChild(el("span", "title", t("system")));
     head.appendChild(button("✕", closeMenu, { className: "close" }));
     panel.appendChild(head);
+    const systemBody = el("div", "body");
     const power = el("div", "row big");
     if (pendingPower) {
       const text = pendingPower === "reboot" ? t("confirm_restart") : t("confirm_shutdown");
       power.appendChild(el("div", "confirm", text));
-      power.appendChild(button(t("yes"), () => runPower(pendingPower), { className: "danger" }));
+      power.appendChild(button(t("yes"), () => runPower(pendingPower), { className: "danger yes" }));
       power.appendChild(button(t("cancel"), () => setPending(null)));
     } else {
       power.appendChild(button(t("restart"), () => setPending("reboot"), { className: "danger" }));
       power.appendChild(button(t("shutdown"), () => setPending("poweroff"), { className: "danger" }));
     }
-    panel.appendChild(power);
+    systemBody.appendChild(power);
+    panel.appendChild(systemBody);
     menu.replaceChildren(panel);
     return;
   }
@@ -239,8 +241,10 @@ function renderMenu() {
   if (info?.power_enabled) head.appendChild(button(t("system_button"), () => setPage("system"), { className: "system" }));
   head.appendChild(button("✕", closeMenu, { className: "close" }));
   panel.appendChild(head);
+  const body = el("div", "body");
+  panel.appendChild(body);
 
-  panel.appendChild(el("div", "section", t("section_view")));
+  body.appendChild(el("div", "section", t("section_view")));
   const views = el("div", "row");
   for (const [name, label, available] of VIEWS) {
     const enabled = Boolean(state.game_title) && available(state);
@@ -250,29 +254,33 @@ function renderMenu() {
       renderMenu();
     }, { disabled: !enabled, className: enabled && view === name ? "selected" : "" }));
   }
-  panel.appendChild(views);
+  body.appendChild(views);
 
   if (info?.brightness?.supported) {
-    panel.appendChild(el("div", "section", t("section_brightness")));
+    body.appendChild(el("div", "section", t("section_brightness")));
     const percent = info.brightness.percent;
     const row = el("div", "row");
     row.appendChild(button("−", () => changeBrightness(percent - 10)));
     row.appendChild(el("div", "level", percent + " %"));
     row.appendChild(button("+", () => changeBrightness(percent + 10)));
-    panel.appendChild(row);
+    body.appendChild(row);
   }
 
-  panel.appendChild(el("div", "section", t("section_status")));
+  body.appendChild(el("div", "section", t("section_status")));
   const status = el("div", "status");
-  const addRow = (label, value) => {
+  const addRow = (label, value, tone) => {
     status.appendChild(el("span", "", label));
-    status.appendChild(el("span", "", value));
+    const cell = el("span", "");
+    if (tone) cell.appendChild(el("i", "dot " + tone));
+    cell.appendChild(document.createTextNode(value));
+    status.appendChild(cell);
   };
-  addRow(t("arcade_pc"), info ? (info.client_connected ? t("connected") : t("disconnected")) : "…");
+  addRow(t("arcade_pc"), info ? (info.client_connected ? t("connected") : t("disconnected")) : "…",
+         info ? (info.client_connected ? "ok" : "bad") : "");
   addRow(t("address"), info?.addresses?.length ? info.addresses.join("  ") : t("unknown"));
   addRow(t("game"), state.game_title || "–");
   addRow(t("version"), info?.app_version ?? "…");
-  panel.appendChild(status);
+  body.appendChild(status);
 
   menu.replaceChildren(panel);
 }
@@ -347,6 +355,14 @@ function closeMenu() {
 menu.addEventListener("click", (event) => {
   if (event.target === menu) closeMenu();
 });
+
+// Load the menu fonts up front so the first opening does not flash fallback text.
+if (document.fonts) {
+  for (const face of ['400 12px "Silkscreen"', '400 19px "Chakra Petch"', '600 18px "Chakra Petch"',
+                      '700 18px "Chakra Petch"', '400 15px "IBM Plex Mono"', '500 24px "IBM Plex Mono"']) {
+    document.fonts.load(face).catch(() => {});
+  }
+}
 
 poll();
 setInterval(poll, 1000);

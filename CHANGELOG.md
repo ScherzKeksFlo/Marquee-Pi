@@ -7,6 +7,7 @@
 - **Redesigned Windows settings** in an arcade theme: sidebar (or tabs), a new **Dashboard** and a **Logs** page, a tray flyout instead of the menu, and matching dialogs. Dark or light theme and sidebar or tabs navigation via `Theme` and `Navigation` in `settings.ini`. The window is DPI aware.
 - **Test connection** on the Connection page, media uploads with a progress bar and a retry banner, and **Language** that applies immediately.
 - Fonts (Silkscreen, Chakra Petch, IBM Plex Mono, SIL OFL) are bundled in the EXE.
+- **Touch menu on the Pi in the same look** as the Windows app: arcade colors, the same fonts (served from the Pi, shipped in the Debian package), pink selection and glow, red danger buttons, a status dot for the connection. Layout and texts are unchanged.
 
 ### Changes
 

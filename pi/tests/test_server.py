@@ -167,6 +167,13 @@ class ApiTests(unittest.TestCase):
                 with urlopen(base + "/ui/app.js", timeout=3) as response:
                     self.assertEqual(response.headers["Content-Type"], "text/javascript; charset=utf-8")
                     self.assertEqual(response.headers["Cache-Control"], "no-cache")
+                with urlopen(base + "/ui/fonts/Silkscreen-Regular.ttf", timeout=3) as response:
+                    self.assertEqual(response.headers["Content-Type"], "font/ttf")
+                    self.assertGreater(len(response.read()), 10000)
+                for name in ("OFL-silkscreen.txt", "..%2Fapp.js", "missing.ttf"):
+                    with self.assertRaises(HTTPError) as missing:
+                        urlopen(base + "/ui/fonts/" + name, timeout=3)
+                    self.assertEqual(missing.exception.code, 404)
                 with self.assertRaises(HTTPError) as result:
                     urlopen(base + "/v1/status", timeout=3)
                 self.assertEqual(result.exception.code, 401)
