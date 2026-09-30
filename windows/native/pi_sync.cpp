@@ -1,5 +1,9 @@
 #include "pi_sync.hpp"
 
+// The Pi returns at most this many gesture events per request (events_after in
+// pi/marquee_pi.py). A shorter page means we have caught up with its backlog.
+static constexpr size_t GESTURE_EVENT_PAGE = 20;
+
 PiSync::PiSync(Settings initial, PiTransport& transport, PiSyncEvents events)
     : transport(transport), events(std::move(events)), current(std::move(initial)) {}
 
@@ -131,7 +135,7 @@ void PiSync::tick() {
                         events.retroArchMenu)
                         events.retroArchMenu();
                 }
-                if (!cursorReady && received.size() < 20) cursorReady = true;
+                if (!cursorReady && received.size() < GESTURE_EVENT_PAGE) cursorReady = true;
             }
         } catch (...) {}
     }
