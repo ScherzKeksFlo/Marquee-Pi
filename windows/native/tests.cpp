@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "pi_sync.hpp"
 #include "strings.hpp"
 #include "thumbnail.hpp"
 #include <mfapi.h>
@@ -8,6 +9,8 @@
 #include <cassert>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <vector>
 #include <iostream>
 
 // Encodes a 1000x562 H.264 clip (neither side is a multiple of 16, so decoder
@@ -128,7 +131,250 @@ static bool isDominant(uint32_t rgb, int shift) {
     return ((rgb >> shift) & 0xFF) > 200;
 }
 
+// ---- PiSync: characterization tests against a scripted fake Pi -------------------------
+// These pin the behaviour of the former App::pollLoop, quirks included. The Pi status
+// is polled every 7th cycle, so an offline Pi is noticed again only on such a cycle.
+namespace {
+struct FakePi : PiTransport {
+    struct Call { std::wstring method, path; std::string body; };
+    std::vector<Call> calls;
+    std::function<HttpResult(const Call&)> handler;  // may throw HttpError or runtime_error
+    std::string instance = "a";
+    std::string events = "[]";
+
+    HttpResult request(const Settings&, const std::wstring& method, const std::wstring& path,
+                       const std::string& body, const std::wstring&, int) override {
+        Call call{method, path, body};
+        calls.push_back(call);
+        if (handler) {
+            HttpResult custom = handler(call);
+            if (custom.status) return custom;
+        }
+        if (path == L"/v1/status") return {200, R"({"game_title":""})"};
+        if (path.rfind(L"/v1/gesture-events", 0) == 0)
+            return {200, "{\"instance_id\":\"" + instance + "\",\"events\":" + events + "}"};
+        return {200, "{}"};
+    }
+    int count(const std::wstring& path) const {
+        int n = 0;
+        for (const auto& call : calls) n += call.path == path;
+        return n;
+    }
+    void forget() { calls.clear(); }
+};
+
+Settings piSettings() {
+    Settings s;
+    s.piUrl = L"http://10.0.0.10:8765";
+    s.token = L"0123456789abcdef0123456789abcdef";
+    return s;
+}
+GameMessage piGame(const wchar_t* title = L"Game") {
+    GameMessage g;
+    g.action = "game";
+    g.title = title;
+    return g;
+}
+void ticks(PiSync& sync, int n) { for (int i = 0; i < n; ++i) sync.tick(); }
+HttpResult failWith(DWORD status) { throw HttpError(status, "scripted"); }
+
+void piSyncTests() {
+    // A game started while online is sent once; the first tick also pushes gestures and language.
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame());
+        ticks(sync, 1);
+        assert(pi.count(L"/v1/status") == 1);
+        assert(pi.count(L"/v1/gesture-config") == 1 && pi.count(L"/v1/language") == 1);
+        assert(pi.count(L"/v1/game") == 1);
+        assert(pi.calls.back().path.rfind(L"/v1/gesture-events", 0) == 0);
+    }
+    // Offline Pi: nothing is sent, and the Pi is only noticed again on the next status cycle (7).
+    {
+        FakePi pi;
+        bool offline = true;
+        pi.handler = [&](const FakePi::Call&) -> HttpResult {
+            if (offline) throw std::runtime_error("unreachable");
+            return {};
+        };
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame());
+        ticks(sync, 1);
+        assert(pi.calls.size() == 1 && pi.count(L"/v1/game") == 0);
+        offline = false;
+        pi.forget();
+        ticks(sync, 6);  // cycles 1..6: no status poll, still considered offline
+        assert(pi.calls.empty());
+        ticks(sync, 1);  // cycle 7: status succeeds, the pending game goes out
+        assert(pi.count(L"/v1/status") == 1 && pi.count(L"/v1/game") == 1);
+    }
+    // Game exit: /v1/default once, then quiet.
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame());
+        ticks(sync, 2);
+        sync.gameExited();
+        pi.forget();
+        ticks(sync, 2);
+        assert(pi.count(L"/v1/default") == 1);
+        assert(!sync.inGame());
+    }
+    // 4xx from /v1/game is not retried; 5xx is retried, but only after the next status cycle.
+    {
+        FakePi pi;
+        pi.handler = [](const FakePi::Call& c) -> HttpResult {
+            if (c.path == L"/v1/game") return failWith(400);
+            return {};
+        };
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame());
+        ticks(sync, 10);
+        // Tick 0 sends it; seeing the Pi instance for the first time queues one more send on
+        // tick 1. Both are rejected and cleared, so nothing follows.
+        assert(pi.count(L"/v1/game") == 2);
+    }
+    {
+        FakePi pi;
+        pi.handler = [](const FakePi::Call& c) -> HttpResult {
+            if (c.path == L"/v1/game") return failWith(500);
+            return {};
+        };
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame());
+        ticks(sync, 7);  // cycles 0..6
+        assert(pi.count(L"/v1/game") == 1);
+        ticks(sync, 1);  // cycle 7
+        assert(pi.count(L"/v1/game") == 2);
+    }
+    // First sight of a Pi instance (and every restart of it) resends game and gestures.
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame());
+        ticks(sync, 1);
+        assert(pi.count(L"/v1/game") == 1 && pi.count(L"/v1/gesture-config") == 1);
+        ticks(sync, 1);  // instance "" -> "a" flagged a resend at the end of tick 0
+        assert(pi.count(L"/v1/game") == 2 && pi.count(L"/v1/gesture-config") == 2);
+        ticks(sync, 1);
+        assert(pi.count(L"/v1/game") == 2);
+        pi.instance = "b";  // Pi restarted
+        ticks(sync, 2);
+        assert(pi.count(L"/v1/game") == 3 && pi.count(L"/v1/gesture-config") == 3);
+    }
+    // A Pi without language support (404) still counts as configured; other errors keep gestures dirty.
+    {
+        FakePi pi;
+        pi.handler = [](const FakePi::Call& c) -> HttpResult {
+            if (c.path == L"/v1/language") return failWith(404);
+            return {};
+        };
+        PiSync sync(piSettings(), pi);
+        ticks(sync, 3);
+        assert(pi.count(L"/v1/gesture-config") == 2);  // tick 0 + the first-instance resend
+        assert(pi.count(L"/v1/language") == 2);
+    }
+    {
+        FakePi pi;
+        pi.handler = [](const FakePi::Call& c) -> HttpResult {
+            if (c.path == L"/v1/language") return failWith(500);
+            return {};
+        };
+        PiSync sync(piSettings(), pi);
+        ticks(sync, 3);
+        assert(pi.count(L"/v1/gesture-config") == 3);  // never cleared, pushed every tick
+    }
+    // Heartbeat: every third status cycle (14, 28, ...) while a game is active, never without one.
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame());
+        ticks(sync, 14);
+        assert(pi.count(L"/v1/heartbeat") == 0);
+        ticks(sync, 1);
+        assert(pi.count(L"/v1/heartbeat") == 1);
+    }
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        ticks(sync, 30);
+        assert(pi.count(L"/v1/heartbeat") == 0);
+    }
+    // RetroArch menu events fire only once the cursor has caught up, during a game.
+    {
+        FakePi pi;
+        int fired = 0;
+        PiSyncEvents events;
+        events.retroArchMenu = [&] { ++fired; };
+        PiSync sync(piSettings(), pi, events);
+        sync.gameStarted(piGame());
+        pi.events = R"([{"id":1,"action":"retroarch_menu"}])";
+        ticks(sync, 2);  // tick 0 sees the new instance, tick 1 catches up on the backlog
+        assert(fired == 0);
+        pi.events = R"([{"id":2,"action":"retroarch_menu"}])";
+        ticks(sync, 1);
+        assert(fired == 1);
+        ticks(sync, 1);  // same id again: already seen
+        assert(fired == 1);
+        sync.gameExited();
+        pi.events = R"([{"id":3,"action":"retroarch_menu"}])";
+        ticks(sync, 1);
+        assert(fired == 1);  // no game, no menu
+    }
+    // A settings change that lands while gestures are being sent is not lost.
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        bool changed = false;
+        pi.handler = [&](const FakePi::Call& c) -> HttpResult {
+            if (c.path == L"/v1/gesture-config" && !changed) {
+                changed = true;
+                Settings next = piSettings();
+                next.gestures["swipe-up"] = "marquee";
+                sync.settingsChanged(next);
+            }
+            return {};
+        };
+        ticks(sync, 1);
+        assert(pi.count(L"/v1/gesture-config") == 1);
+        pi.forget();
+        ticks(sync, 1);
+        assert(pi.count(L"/v1/gesture-config") == 1);
+        bool sentNewGesture = false;
+        for (const auto& call : pi.calls)
+            if (call.path == L"/v1/gesture-config") sentNewGesture = call.body.find("swipe-up") != std::string::npos;
+        assert(sentNewGesture);
+        assert(sync.settings().gestures.count("swipe-up") == 1);
+    }
+    // Tray commands: showDefault drops the game and cancels the pending default.
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame());
+        sync.showDefault();
+        assert(!sync.inGame() && pi.count(L"/v1/default") == 1);
+        pi.forget();
+        ticks(sync, 2);
+        assert(pi.count(L"/v1/default") == 0 && pi.count(L"/v1/game") == 0);
+        sync.rebootPi(); sync.reloadDisplay(); sync.shutdownPi(3000);
+        assert(pi.count(L"/v1/reboot") == 1 && pi.count(L"/v1/reload") == 1 && pi.count(L"/v1/shutdown") == 1);
+    }
+    // Status events carry the Pi's game title (empty for the default media).
+    {
+        FakePi pi;
+        std::vector<std::pair<bool, std::string>> seen;
+        PiSyncEvents events;
+        events.status = [&](bool connected, const std::string& title) { seen.push_back({connected, title}); };
+        PiSync sync(piSettings(), pi, events);
+        ticks(sync, 1);
+        assert(seen.size() == 1 && seen[0].first && seen[0].second.empty());
+    }
+}
+}  // namespace
+
 int main() {
+    piSyncTests();
     using namespace mini;
     static_assert(MARQUEE_PI_ARTWORK_BUDGET_BYTES == 24379392);
     static_assert((MARQUEE_PI_ARTWORK_BUDGET_BYTES * 4 + 2) / 3 +
