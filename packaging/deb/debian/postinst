@@ -27,6 +27,19 @@ configure)
         echo "marquee-pi: created $CONFIG with a random API token." >&2
         echo "marquee-pi: enter the same token in the Windows app (Settings > Connection)," >&2
         echo "marquee-pi: set allowed_client_ips to the Windows IP and review the file." >&2
+        created_config=1
+    fi
+
+    # Display profile. A fresh install on a terminal asks which screen to use; every other case
+    # (no terminal, upgrade without a profile) derives it from what is connected, without
+    # questions and without touching the boot configuration. An existing profile is kept.
+    if [ -x /usr/sbin/marquee-pi-configure-display ]; then
+        if [ "${created_config:-0}" = 1 ] && [ -t 0 ] && [ -t 1 ] && [ "${DEBIAN_FRONTEND:-}" != noninteractive ]; then
+            /usr/sbin/marquee-pi-configure-display --no-restart \
+                || /usr/sbin/marquee-pi-configure-display --auto --no-restart || true
+        else
+            /usr/sbin/marquee-pi-configure-display --auto --no-restart || true
+        fi
     fi
 
     # The kiosk unit ships with User=pi. If there is no such user, log the kiosk in as

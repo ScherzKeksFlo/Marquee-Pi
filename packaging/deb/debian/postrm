@@ -13,7 +13,8 @@ remove|purge)
     rm -rf /opt/marquee-pi/__pycache__
     rmdir /opt/marquee-pi 2>/dev/null || true
     if [ "$1" = purge ]; then
-        rm -rf /etc/marquee-pi /var/lib/marquee-pi /etc/systemd/system/marquee-pi-kiosk.service.d
+        rm -rf /etc/marquee-pi /var/lib/marquee-pi /etc/systemd/system/marquee-pi-kiosk.service.d \
+            /etc/systemd/system/marquee-pi-api.service.d
         if getent passwd marqueepi >/dev/null; then
             deluser --quiet --system marqueepi || true
         fi

@@ -93,6 +93,8 @@ class DebPackageTests(unittest.TestCase):
 
     def test_expected_files_are_installed(self):
         for name in ("./opt/marquee-pi/marquee_pi.py", "./opt/marquee-pi/static/index.html",
+                     "./opt/marquee-pi/display_profile.py", "./opt/marquee-pi/configure_display.py",
+                     "./usr/sbin/marquee-pi-configure-display",
                      "./opt/marquee-pi/static/app.js", "./opt/marquee-pi/static/gesture.js",
                      "./opt/marquee-pi/static/fonts/Silkscreen-Regular.ttf",
                      "./opt/marquee-pi/static/fonts/OFL-silkscreen.txt",

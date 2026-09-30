@@ -95,6 +95,14 @@ class ParseTests(unittest.TestCase):
         self.assertEqual((env["MP_MODE"], env["MP_SCALE"], env["MP_TOUCH_DEVICE"], env["MP_ROTATE"]),
                          ("", "auto", "", "normal"))
 
+    def test_scale_command(self):
+        for arguments, expected in ((["1920", "1080"], "2.25\n"), (["800", "480"], "1\n"), (["1920", "360"], "0.75\n")):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                self.assertEqual(display_profile.main(["display_profile.py", "--scale"] + arguments), 0)
+            self.assertEqual(out.getvalue(), expected)
+        self.assertEqual(display_profile.main(["display_profile.py", "--scale", "wide", "1080"]), 2)
+
     def test_env_command_reads_a_config_file(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
@@ -149,6 +157,26 @@ class StateTests(unittest.TestCase):
 
 
 class ApiTests(unittest.TestCase):
+    def test_display_profile_endpoint_serves_the_kiosk_its_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            profile, _ = parse_profile({"output": "HDMI-1", "rotation": 270, "touch": {"device": "ft5x06"}})
+            state = DisplayState(Path(directory), 60, display=profile)
+            server = Server(("127.0.0.1", 0), state, TOKEN)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+                connection.request("GET", "/ui/display-profile")
+                response = connection.getresponse()
+                body = response.read().decode()
+                self.assertEqual((response.status, response.getheader("Cache-Control")), (200, "no-store"))
+                env = read_env(body)
+                self.assertEqual((env["MP_OUTPUT"], env["MP_ROTATE"], env["MP_TOUCH_DEVICE"], env["MP_CONFIGURED"]),
+                                 ("HDMI-1", "left", "ft5x06", "1"))
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_display_size_endpoint_is_local_and_validated(self):
         with tempfile.TemporaryDirectory() as directory:
             state = DisplayState(Path(directory), 60)

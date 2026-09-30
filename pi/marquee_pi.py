@@ -20,7 +20,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from display_profile import parse_profile
+from display_profile import parse_profile, shell_env
 
 APP_VERSION = "1.0.0-beta.2"
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
@@ -701,6 +701,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/ui/state":
             self._json(200, self.server.state.describe())
+            return
+        if path == "/ui/display-profile":
+            # For start-kiosk.sh: config.json is not readable for the kiosk user. Shell-quoted by shell_env.
+            self._send(200, shell_env(self.server.state.display).encode("utf-8"), "text/plain; charset=utf-8", "no-store")
             return
         if path == "/ui/system":
             self._json(200, {**self.server.state.system_info(),

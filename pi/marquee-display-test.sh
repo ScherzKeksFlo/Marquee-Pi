@@ -3,8 +3,20 @@ set -eu
 
 ACTION="${1:-status}"
 KIOSK_USER="${MARQUEE_PI_USER:-pi}"
-DISPLAY_NAME="${MARQUEE_PI_DISPLAY:-DSI-1}"
 XAUTHORITY_FILE="/home/$KIOSK_USER/.Xauthority"
+CONFIG="${MARQUEE_PI_CONFIG:-/etc/marquee-pi/config.json}"
+
+# The screen comes from the display profile (MARQUEE_PI_DISPLAY overrides it; DSI-1 was the default before).
+MP_OUTPUT=""
+if [ -r "$CONFIG" ] && command -v python3 >/dev/null 2>&1; then
+    eval "$(python3 /opt/marquee-pi/display_profile.py --env "$CONFIG" 2>/dev/null)" || true
+fi
+DISPLAY_NAME="${MARQUEE_PI_DISPLAY:-${MP_OUTPUT:-DSI-1}}"
+
+is_dsi_display() {
+    case "$DISPLAY_NAME" in DSI-*) return 0 ;; esac
+    return 1
+}
 
 has_dsi() {
     find /sys/class/drm -maxdepth 1 -name 'card*-DSI-*' -print -quit 2>/dev/null | grep -q .
@@ -17,6 +29,7 @@ xrun() {
 status() {
     echo "Marquee-Pi display status"
     echo "Kernel: $(uname -r)"
+    echo "Configured screen: $DISPLAY_NAME"
     printf "DSI: "
     if has_dsi; then echo "detected"; else echo "missing"; fi
     printf "Firmware power: "
@@ -46,27 +59,37 @@ require_root() {
 
 blink() {
     require_root
-    if ! has_dsi; then
-        echo "DSI is missing; a backlight test is not possible." >&2
-        exit 2
+    if is_dsi_display; then
+        if ! has_dsi; then
+            echo "DSI is missing; a backlight test is not possible." >&2
+            exit 2
+        fi
+        echo "Display off for three seconds..."
+        vcgencmd display_power 0 >/dev/null
+        sleep 3
+        vcgencmd display_power 1 >/dev/null
+        echo "Display on. The backlight should have visibly changed."
+    else
+        echo "Screen $DISPLAY_NAME off for three seconds..."
+        xrun xrandr --output "$DISPLAY_NAME" --off
+        sleep 3
+        xrun xrandr --output "$DISPLAY_NAME" --auto --primary
+        echo "Screen on again."
     fi
-    echo "Display off for three seconds..."
-    vcgencmd display_power 0 >/dev/null
-    sleep 3
-    vcgencmd display_power 1 >/dev/null
-    echo "Display on. The backlight should have visibly changed."
 }
 
 reset_display() {
     require_root
-    if ! has_dsi; then
+    if is_dsi_display && ! has_dsi; then
         echo "DSI is missing. Rebooting the Pi once while display power remains on..."
         systemctl reboot
         exit 0
     fi
-    vcgencmd display_power 0 >/dev/null 2>&1 || true
-    sleep 2
-    vcgencmd display_power 1 >/dev/null 2>&1 || true
+    if is_dsi_display; then
+        vcgencmd display_power 0 >/dev/null 2>&1 || true
+        sleep 2
+        vcgencmd display_power 1 >/dev/null 2>&1 || true
+    fi
     if xrun xrandr --query 2>/dev/null | grep -q "^$DISPLAY_NAME connected"; then
         xrun xrandr --output "$DISPLAY_NAME" --off || true
         sleep 1

@@ -33,14 +33,14 @@ HOMEPAGE = "https://github.com/ScherzKeksFlo/Marquee-Pi"
 DEPENDS = [
     "python3", "ffmpeg", "fbi", "curl", "chromium | chromium-browser", "xserver-xorg",
     "xserver-xorg-input-libinput", "xinit", "x11-xserver-utils", "xauth",
-    "polkitd | policykit-1", "openssl", "adduser", "hostname", "systemd",
+    "polkitd | policykit-1", "openssl", "adduser", "hostname", "systemd", "xinput",
 ]
 # vcgencmd (marquee-display-test) comes from a Raspberry Pi OS package that Debian does not have.
 RECOMMENDS = ["libraspberrypi-bin"]
 DESCRIPTION = (
     "Marquee display for arcade cabinets on a Raspberry Pi",
-    "Shows game marquees, box art and controls on a small touch display attached",
-    "to a Raspberry Pi. The Windows app sends the artwork of the running game",
+    "Shows game marquees, box art and controls on a display attached",
+    "to a Raspberry Pi (HDMI or DSI, with or without touch). The Windows app sends the artwork of the running game",
     "over HTTP; a local kiosk browser displays it and offers a touch menu for",
     "views, brightness, status and restart or shutdown.",
     "",
@@ -93,6 +93,8 @@ def payload() -> dict[str, tuple[bytes, int]]:
 
     app = "opt/marquee-pi"
     add(f"{app}/marquee_pi.py", read(PI / "marquee_pi.py"))
+    add(f"{app}/display_profile.py", read(PI / "display_profile.py"))
+    add(f"{app}/configure_display.py", read(PI / "configure_display.py"))
     add(f"{app}/start-kiosk.sh", read(PI / "start-kiosk.sh"), 0o755)
     add(f"{app}/show-shutdown.sh", read(PI / "show-shutdown.sh"), 0o755)
     for path in sorted((PI / "static").rglob("*")):
@@ -111,6 +113,7 @@ def payload() -> dict[str, tuple[bytes, int]]:
     add("etc/X11/xorg.conf.d/20-marquee-pi-modesetting.conf", read(PI / "xorg-modesetting.example.conf"))
     add("usr/sbin/marquee-pi-configure-quiet-boot", read(PI / "configure-quiet-boot.sh"), 0o755)
     add("usr/sbin/marquee-display-test", read(PI / "marquee-display-test.sh"), 0o755)
+    add("usr/sbin/marquee-pi-configure-display", read(PI / "marquee-pi-configure-display.sh"), 0o755)
 
     doc = "usr/share/doc/marquee-pi"
     add(f"{doc}/config.example.json", read(PI / "config.example.json"))

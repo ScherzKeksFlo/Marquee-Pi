@@ -167,7 +167,13 @@ def main(argv: list[str]) -> int:
             print(warning, file=sys.stderr)
         sys.stdout.write(shell_env(profile))
         return 0
-    print("usage: display_profile.py --env CONFIG.json", file=sys.stderr)
+    if len(argv) == 4 and argv[1] == "--scale":
+        try:
+            print("%g" % auto_scale(int(argv[2]), int(argv[3])))
+        except ValueError:
+            return 2
+        return 0
+    print("usage: display_profile.py --env CONFIG.json | --scale WIDTH HEIGHT", file=sys.stderr)
     return 2
 
 
