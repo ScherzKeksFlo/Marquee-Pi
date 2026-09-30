@@ -478,6 +478,14 @@ int main() {
     assert(parse(decimals.dump()).get("small").real() == -0.002);
     auto game = parseGameMessage(parsed.dump());
     assert(game.action == "game" && game.title == L"P\u00e4c Man");
+    assert(game.core.empty() && game.rom.empty());  // older plugins send neither
+    auto emulated = parseGameMessage(R"({"Action":"game","Title":"Street Fighter II","Core":"FinalBurn Neo","Rom":"sf2ce.zip"})");
+    assert(emulated.core == L"FinalBurn Neo" && emulated.rom == L"sf2ce.zip");
+    {
+        auto withInfo = parse(gamePayload(emulated));
+        assert(withInfo.get("core").value() == "FinalBurn Neo" && withInfo.get("rom").value() == "sf2ce.zip");
+        assert(parse(gamePayload(game)).get("core").is_null());  // nothing is sent when unknown
+    }
     auto warnings = gameWarnings(R"({"ok":true,"warnings":[{"kind":"marquee","error":"bad image"},{"kind":"logo","error":""},null]})");
     assert(warnings.size() == 2);
     assert(warnings[0] == "marquee: bad image");

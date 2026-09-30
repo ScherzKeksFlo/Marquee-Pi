@@ -34,12 +34,12 @@
     #menu .head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 16px; background: var(--pbg); border-bottom: 1px solid var(--line); }
     #menu .head .title { flex: 1; font: 400 20px "Silkscreen", monospace; letter-spacing: 0.02em; color: var(--cyan); text-shadow: 0 0 10px rgba(46, 242, 255, 0.7); }
     #menu button.system, #menu button.back { flex: 0 0 auto; min-width: 120px; }
-    #menu .body { position: relative; padding: 4px 16px 16px; }
+    #menu .body { position: relative; padding: 2px 16px 12px; }
     #menu .body::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.5; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 3px); }
     #menu .row.big { margin-top: 12px; }
     #menu .row.big button { min-height: 96px; font-size: 22px; }
     #menu .row.big .confirm { font-size: 22px; }
-    #menu .section { margin: 12px 0 6px; font: 400 12px "Silkscreen", monospace; letter-spacing: 0.04em; color: var(--ink2); }
+    #menu .section { margin: 8px 0 4px; font: 400 12px "Silkscreen", monospace; letter-spacing: 0.04em; color: var(--ink2); }
     #menu .row { display: flex; gap: 8px; align-items: center; }
     #menu button { flex: 1; min-height: 56px; padding: 0 10px; font: 600 18px "Chakra Petch", sans-serif; color: var(--ink); background: var(--ibg); border: 1px solid var(--line); border-radius: 6px; }
     #menu button:active { background: var(--line); box-shadow: var(--gc); }
@@ -51,9 +51,9 @@
     #menu button.yes:active { background: var(--red); box-shadow: 0 0 14px rgba(255, 90, 120, 0.5); }
     #menu button.close { flex: 0 0 56px; }
     #menu .level { flex: 2; text-align: center; font: 500 24px "IBM Plex Mono", monospace; }
-    #menu .status { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; padding: 12px 14px; background: var(--pbg); border: 1px solid var(--line); border-radius: 8px; font-size: 17px; }
+    #menu .status { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 18px; padding: 10px 14px; background: var(--pbg); border: 1px solid var(--line); border-radius: 8px; font-size: 16px; line-height: 1.15; }
     #menu .status span:nth-child(odd) { color: var(--ink2); }
-    #menu .status span:nth-child(even) { font: 400 15px "IBM Plex Mono", monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #menu .status span:nth-child(even) { font: 400 14px/1.2 "IBM Plex Mono", monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #menu .dot { display: inline-block; width: 9px; height: 9px; margin-right: 9px; border-radius: 50%; }
     #menu .dot.ok { background: var(--grn); box-shadow: 0 0 8px var(--grn); }
     #menu .dot.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
