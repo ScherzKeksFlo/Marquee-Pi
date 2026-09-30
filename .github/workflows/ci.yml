@@ -140,13 +140,16 @@ jobs:
       - name: Check that the app compiles
         shell: msys2 {0}
         run: |
-          g++ -std=c++20 -Wall -Wextra -municode -mwindows -fsyntax-only windows/native/main.cpp
+          for file in main settings_ui popups ui_kit thumb_cache pi_sync event_log; do
+            g++ -std=c++20 -Wall -Wextra -municode -mwindows -fsyntax-only windows/native/$file.cpp
+          done
       - name: Build and run native tests
         shell: msys2 {0}
         run: |
           mkdir -p build/native-tests
           g++ -std=c++20 -O2 -Wall -Wextra -static -static-libgcc -static-libstdc++ \
             windows/native/core.cpp windows/native/strings.cpp windows/native/thumbnail.cpp \
+            windows/native/pi_sync.cpp windows/native/event_log.cpp \
             windows/native/tests.cpp \
             -o build/native-tests/Marquee-Pi-tests.exe \
             -lwinhttp -lshell32 -ladvapi32 -lcrypt32 -luser32 -lgdi32 -lole32 -luuid -lws2_32 \

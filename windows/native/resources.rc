@@ -1,6 +1,14 @@
 1 ICON "../Resources/connected.ico"
 101 ICON "../Resources/connected.ico"
 102 ICON "../Resources/disconnected.ico"
+201 RCDATA "../Resources/fonts/Silkscreen-Regular.ttf"
+202 RCDATA "../Resources/fonts/Silkscreen-Bold.ttf"
+203 RCDATA "../Resources/fonts/ChakraPetch-Regular.ttf"
+204 RCDATA "../Resources/fonts/ChakraPetch-Medium.ttf"
+205 RCDATA "../Resources/fonts/ChakraPetch-SemiBold.ttf"
+206 RCDATA "../Resources/fonts/ChakraPetch-Bold.ttf"
+207 RCDATA "../Resources/fonts/IBMPlexMono-Regular.ttf"
+208 RCDATA "../Resources/fonts/IBMPlexMono-Medium.ttf"
 
 1 VERSIONINFO
 FILEVERSION 1,0,0,0

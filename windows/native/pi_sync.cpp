@@ -54,15 +54,19 @@ void PiSync::tick() {
     const bool statusCycle = cycle % 7 == 0;
     if (statusCycle || statusDown) {
         try {
+            const auto started = std::chrono::steady_clock::now();
             auto response = transport.request(copy, L"GET", L"/v1/status");
+            const int latency = int(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        std::chrono::steady_clock::now() - started).count());
             auto status = mini::parse(response.body);
             const bool recovered = statusDown;
             online = true; statusDown = false;
-            if (events.status && (statusCycle || recovered)) events.status(true, status.get("game_title").value(""));
+            if (events.status && (statusCycle || recovered))
+                events.status(true, status.get("game_title").value(""), latency);
         } catch (...) {
             const bool wasDown = statusDown;
             online = false; statusDown = true;
-            if (events.status && (statusCycle || !wasDown)) events.status(false, "");
+            if (events.status && (statusCycle || !wasDown)) events.status(false, "", -1);
             std::lock_guard<std::mutex> guard(mutex);
             gestureDirty = true;
             if (game) needsSync = true;
@@ -92,10 +96,14 @@ void PiSync::tick() {
                 try {
                     const std::string payload = gamePayload(*now);
                     for (const auto& problem : takeArtworkErrors())
-                        if (events.warning) events.warning("not sent: " + problem);
+                        if (events.artworkSkipped) events.artworkSkipped(problem);
+                    const auto sendStarted = std::chrono::steady_clock::now();
                     auto response = transport.request(copy, L"POST", L"/v1/game", payload, json);
+                    if (events.gameSent)
+                        events.gameSent(payload.size(), int(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                std::chrono::steady_clock::now() - sendStarted).count()));
                     for (const auto& warning : gameWarnings(response.body))
-                        if (events.warning) events.warning(warning);
+                        if (events.piWarning) events.piWarning(warning);
                     std::lock_guard<std::mutex> guard(mutex);
                     if (gameVersion == version && configVersion == configAtStart) needsSync = false;
                 } catch (const HttpError& error) {

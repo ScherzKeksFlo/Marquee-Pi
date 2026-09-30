@@ -13,15 +13,16 @@ $object = Join-Path $output "resources.o"
 if ($LASTEXITCODE -ne 0) { throw "Icon resources failed" }
 $exe = Join-Path $output "Marquee-Pi.exe"
 & $compiler -std=c++20 -O2 -Wall -Wextra -municode -mwindows -static -static-libgcc -static-libstdc++ `
-    (Join-Path $PSScriptRoot "core.cpp") (Join-Path $PSScriptRoot "strings.cpp") (Join-Path $PSScriptRoot "thumbnail.cpp") (Join-Path $PSScriptRoot "pi_sync.cpp") `
+    (Join-Path $PSScriptRoot "core.cpp") (Join-Path $PSScriptRoot "strings.cpp") (Join-Path $PSScriptRoot "thumbnail.cpp") (Join-Path $PSScriptRoot "pi_sync.cpp") (Join-Path $PSScriptRoot "event_log.cpp") `
+    (Join-Path $PSScriptRoot "ui_kit.cpp") (Join-Path $PSScriptRoot "thumb_cache.cpp") (Join-Path $PSScriptRoot "popups.cpp") (Join-Path $PSScriptRoot "settings_ui.cpp") `
     (Join-Path $PSScriptRoot "main.cpp") $object `
     -o $exe -lwinhttp -lshell32 -ladvapi32 -lcrypt32 -lcomctl32 -lcomdlg32 `
-    -lwevtapi -lgdi32 -luser32 -lole32 -luuid -lws2_32 -lwindowscodecs `
+    -lwevtapi -lgdi32 -lgdiplus -ldwmapi -luser32 -lole32 -luuid -lws2_32 -lwindowscodecs `
     -lmfplat -lmfreadwrite -lmf -lmfuuid -lpropsys
 if ($LASTEXITCODE -ne 0) { throw "Marquee-Pi C++ build failed" }
 $tests = Join-Path $output "Marquee-Pi-tests.exe"
 & $compiler -std=c++20 -O2 -Wall -Wextra -static -static-libgcc -static-libstdc++ `
-    (Join-Path $PSScriptRoot "core.cpp") (Join-Path $PSScriptRoot "strings.cpp") (Join-Path $PSScriptRoot "thumbnail.cpp") (Join-Path $PSScriptRoot "pi_sync.cpp") `
+    (Join-Path $PSScriptRoot "core.cpp") (Join-Path $PSScriptRoot "strings.cpp") (Join-Path $PSScriptRoot "thumbnail.cpp") (Join-Path $PSScriptRoot "pi_sync.cpp") (Join-Path $PSScriptRoot "event_log.cpp") `
     (Join-Path $PSScriptRoot "tests.cpp") `
     -o $tests -lwinhttp -lshell32 -ladvapi32 -lcrypt32 -luser32 -lgdi32 -lole32 -luuid -lws2_32 -lwindowscodecs `
     -lmfplat -lmfreadwrite -lmf -lmfuuid -lpropsys

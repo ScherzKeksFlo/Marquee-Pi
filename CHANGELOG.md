@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Highlights
+
+- **Redesigned Windows settings** in an arcade theme: sidebar (or tabs), a new **Dashboard** and a **Logs** page, a tray flyout instead of the menu, and matching dialogs. Dark or light theme and sidebar or tabs navigation via `Theme` and `Navigation` in `settings.ini`. The window is DPI aware.
+- **Test connection** on the Connection page, media uploads with a progress bar and a retry banner, and **Language** that applies immediately.
+- Fonts (Silkscreen, Chakra Petch, IBM Plex Mono, SIL OFL) are bundled in the EXE.
+
+### Changes
+
+- Saving keeps the settings window open and confirms with a message.
+- After the Pi was unreachable, the next status poll happens at once instead of after up to five seconds; the Windows tool no longer sends the running game twice when it first sees a Pi, and resends it when settings change during the send.
+- The Windows tool's Pi traffic now lives in `PiSync` with a scripted fake Pi in the tests.
+
 ## 1.0.0-beta.1
 
 Follows `1.0.0-preview.2`. It is tested on one setup (Raspberry Pi 3 B+ with the 7" DSI touch display on Raspberry Pi OS Trixie, Windows 11 arcade PC with LaunchBox/Big Box), not yet on others.

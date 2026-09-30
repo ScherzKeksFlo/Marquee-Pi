@@ -30,3 +30,9 @@ const wchar_t* tr(Str id) {
     if (index >= size_t(Str::Count)) return L"";
     return german ? TABLE[index].de : TABLE[index].en;
 }
+
+const wchar_t* trLang(Str id, bool german) {
+    const size_t index = size_t(id);
+    if (index >= size_t(Str::Count)) return L"";
+    return german ? TABLE[index].de : TABLE[index].en;
+}
