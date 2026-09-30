@@ -20,6 +20,8 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
+from display_profile import parse_profile
+
 APP_VERSION = "1.0.0-beta.2"
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
 MAX_MEDIA_BYTES = 20 * 1024 * 1024
@@ -131,11 +133,24 @@ def local_addresses() -> list[str]:
     return [part for part in result.stdout.split() if part.count(".") == 3][:4]
 
 
+def pi_model() -> str | None:
+    """Model name from the device tree, e.g. "Raspberry Pi 3 Model B Plus Rev 1.3"."""
+    try:
+        text = Path("/proc/device-tree/model").read_bytes().rstrip(b"\x00").decode("utf-8", "replace").strip()
+    except OSError:
+        return None
+    return text or None
+
+
 class DisplayState:
     def __init__(self, data_dir: Path, timeout_seconds: int,
-                 backlight_root: Path = Path("/sys/class/backlight")):
+                 backlight_root: Path = Path("/sys/class/backlight"), display: dict | None = None):
         self.lock = threading.RLock()
         self.backlight_root = backlight_root
+        # The display profile from config.json (defaults when absent: touch is assumed).
+        self.display = display if display is not None else parse_profile(None)[0]
+        self.display_size: tuple[int, int] | None = None  # physical pixels, reported by the page
+        self.model = pi_model()
         self.last_client_contact = 0.0
         self.upload_lock = threading.Lock()
         self.data_dir = data_dir
@@ -167,8 +182,11 @@ class DisplayState:
         return contact > 0 and time.monotonic() - contact <= CLIENT_CONNECTED_SECONDS
 
     def _backlight(self) -> Path | None:
+        wanted = self.display.get("backlight")
         try:
             for candidate in sorted(self.backlight_root.iterdir()):
+                if wanted and candidate.name != wanted:
+                    continue
                 if (candidate / "brightness").is_file() and (candidate / "max_brightness").is_file():
                     return candidate
         except OSError:
@@ -222,6 +240,29 @@ class DisplayState:
             "addresses": local_addresses(),
             "client_connected": self.client_connected(),
             "brightness": self.brightness(),
+        }
+
+    def set_display_size(self, width, height) -> None:
+        """The page reports the size of the screen in physical pixels."""
+        for value in (width, height):
+            if isinstance(value, bool) or not isinstance(value, int) or not 64 <= value <= 16384:
+                raise ValueError("Display size must be two integers from 64 to 16384")
+        with self.lock:
+            self.display_size = (width, height)
+
+    def display_info(self) -> dict:
+        size = self.display_size
+        return {
+            "output": self.display.get("output"),
+            "width": size[0] if size else None,
+            "height": size[1] if size else None,
+            "rotation": self.display["rotation"],
+            "fit": self.display["fit"],
+            "scale": self.display["scale"],
+            "touch": self.display["touch"],
+            "pi_model": self.model,
+            # configure-display shows a test picture while the user confirms a new profile
+            "test_pattern": (self.data_dir / "display-test").exists(),
         }
 
     def _load_media_slot(self, manifest_name: str) -> tuple[Path | None, float | None]:
@@ -329,6 +370,7 @@ class DisplayState:
                 "has_box_art": "box_art" in self.game_media,
                 "has_logo": "logo" in self.game_media,
                 "game_hashes": self.game_hashes.copy(),
+                "display": self.display_info(),
                 "gesture_actions": self.gesture_actions.copy(),
                 "language": self.language,
                 "instance_id": self.instance_id,
@@ -717,6 +759,19 @@ class Handler(BaseHTTPRequestHandler):
             self.server.state.show_shutdown()
             self._json(200, {"ok": True})
             return
+        if path == "/ui/display":
+            if not self._local():
+                self._json(403, {"error": "Local display only"})
+                return
+            try:
+                payload = json.loads(self._body())
+                if not isinstance(payload, dict):
+                    raise ValueError("Payload must be an object")
+                self.server.state.set_display_size(payload.get("width"), payload.get("height"))
+                self._json(200, {"ok": True})
+            except (ValueError, json.JSONDecodeError) as exc:
+                self._json(400, {"error": str(exc)})
+            return
         if path in ("/ui/brightness", "/ui/power"):
             if not self._local():
                 self._json(403, {"error": "Local display only"})
@@ -834,7 +889,10 @@ def main() -> None:
     if len(token) < 24 or token.startswith("CHANGE"):
         raise SystemExit("Set a random token of at least 24 characters")
     data_dir = Path(config["data_dir"]).expanduser().resolve()
-    state = DisplayState(data_dir, int(config.get("game_timeout_seconds", 60)))
+    display, display_warnings = parse_profile(config.get("display"))
+    for warning in display_warnings:
+        print("config: " + warning, flush=True)
+    state = DisplayState(data_dir, int(config.get("game_timeout_seconds", 60)), display=display)
     server = Server((config.get("bind", "0.0.0.0"), int(config.get("port", 8765))), state, token,
                     config.get("allowed_client_ips", []), bool(config.get("power_commands_enabled", False)))
     print("Marquee-Pi listening on %s:%s" % server.server_address, flush=True)

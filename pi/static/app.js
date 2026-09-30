@@ -6,6 +6,52 @@ let lastVersion = -1;
 let currentState = null;
 let view = "marquee";
 
+// ---- Display profile (from the Pi's configuration) ------------------------------------
+
+function displayInfo() {
+  return currentState?.display ?? {};
+}
+
+// Without a touch device the screen only shows the marquee; every touch and click is ignored.
+function touchEnabled() {
+  return displayInfo().touch !== false;
+}
+
+function applyDisplay() {
+  document.documentElement.style.setProperty("--fit", displayInfo().fit === "cover" ? "cover" : "contain");
+  document.body.classList.toggle("compact", window.innerHeight < 400);
+  if (!touchEnabled()) closeMenu();
+}
+
+// The API reports the real screen size to Windows, so the page tells it in physical pixels.
+let reportedSize = "";
+function reportSize() {
+  const width = Math.round(window.innerWidth * window.devicePixelRatio);
+  const height = Math.round(window.innerHeight * window.devicePixelRatio);
+  const key = width + "x" + height;
+  if (key === reportedSize) return;
+  reportedSize = key;
+  postJson("/ui/display", { width, height })
+    .then((response) => { if (!response.ok) reportedSize = ""; })
+    .catch(() => { reportedSize = ""; });
+}
+window.addEventListener("resize", () => {
+  applyDisplay();
+  reportSize();
+});
+
+function renderTestPattern() {
+  const info = displayInfo();
+  const box = el("div");
+  box.id = "pattern";
+  box.appendChild(el("div", "arrow"));
+  box.appendChild(el("div", "", t("test_top")));
+  const width = Math.round(window.innerWidth * window.devicePixelRatio);
+  const height = Math.round(window.innerHeight * window.devicePixelRatio);
+  box.appendChild(el("div", "info", [info.output || "–", width + " × " + height, (info.rotation || 0) + "°"].join("  ·  ")));
+  stage.appendChild(box);
+}
+
 function makeMedia(url, video, loop = true) {
   const element = document.createElement(video ? "video" : "img");
   element.src = url;
@@ -30,6 +76,10 @@ function makeMedia(url, video, loop = true) {
 function render() {
   if (!currentState) return;
   stage.replaceChildren();
+  if (currentState.display?.test_pattern) {
+    renderTestPattern();
+    return;
+  }
   const state = currentState;
   // Cache keys come from content (file name / hash), not the state version, which
   // restarts at 1 with the server while the browser keeps media for a year.
@@ -72,9 +122,13 @@ async function poll() {
     const response = await fetch("/ui/state", { cache: "no-store" });
     if (!response.ok) throw new Error("State unavailable");
     const state = await response.json();
-    if (state.version !== lastVersion) {
+    reportSize();
+    // The test picture appears without a new state version, so it is part of the change key.
+    const key = state.version + ":" + (state.display?.test_pattern ? "t" : "");
+    if (key !== lastVersion) {
       currentState = state;
-      lastVersion = state.version;
+      lastVersion = key;
+      applyDisplay();
       view = "marquee";
       recognizer.reset();
       render();
@@ -87,6 +141,7 @@ async function poll() {
 }
 
 stage.addEventListener("pointerdown", (event) => {
+  if (!touchEnabled()) return;
   event.preventDefault();
   stage.setPointerCapture(event.pointerId);
   recognizer.down(event.pointerId, event.clientX, event.clientY, performance.now());
@@ -97,9 +152,11 @@ stage.addEventListener("pointerdown", (event) => {
   }, recognizer.longPressMs + 30);
 });
 stage.addEventListener("pointermove", (event) => {
+  if (!touchEnabled()) return;
   recognizer.move(event.pointerId, event.clientX, event.clientY);
 });
 stage.addEventListener("pointerup", (event) => {
+  if (!touchEnabled()) return;
   clearTimeout(longPressTimer);
   const kind = recognizer.up(event.pointerId, event.clientX, event.clientY, performance.now());
   if (currentState?.shutting_down) return;
@@ -155,7 +212,7 @@ const TEXT = {
     arcade_pc: "Arcade PC", connected: "connected", disconnected: "not connected", address: "Address",
     unknown: "unknown", game: "Game", core: "Core", rom: "ROM", version: "Version", system_button: "System …", system: "System",
     back: "‹ Back", restart: "Restart", shutdown: "Shut down", yes: "Yes", cancel: "Cancel",
-    confirm_restart: "Really restart the Pi?", confirm_shutdown: "Really shut down the Pi?"
+    confirm_restart: "Really restart the Pi?", confirm_shutdown: "Really shut down the Pi?", test_top: "Top"
   },
   de: {
     view_marquee: "Marquee", view_box_art: "Box Art", view_logo: "Logo", view_controls: "Controls",
@@ -163,7 +220,7 @@ const TEXT = {
     arcade_pc: "Arcade-PC", connected: "verbunden", disconnected: "nicht verbunden", address: "Adresse",
     unknown: "unbekannt", game: "Spiel", core: "Core", rom: "ROM", version: "Version", system_button: "System …", system: "System",
     back: "‹ Zurück", restart: "Neustart", shutdown: "Herunterfahren", yes: "Ja", cancel: "Abbrechen",
-    confirm_restart: "Pi wirklich neu starten?", confirm_shutdown: "Pi wirklich herunterfahren?"
+    confirm_restart: "Pi wirklich neu starten?", confirm_shutdown: "Pi wirklich herunterfahren?", test_top: "Oben"
   }
 };
 
@@ -245,7 +302,7 @@ function renderMenu() {
   panel.appendChild(body);
 
   body.appendChild(el("div", "section", t("section_view")));
-  const views = el("div", "row");
+  const views = el("div", "row views");
   for (const [name, label, available] of VIEWS) {
     const enabled = Boolean(state.game_title) && available(state);
     views.appendChild(button(t(label), () => {
@@ -332,7 +389,7 @@ async function runPower(action) {
 }
 
 function openMenu() {
-  if (menuOpen || currentState?.shutting_down) return;
+  if (menuOpen || currentState?.shutting_down || !touchEnabled()) return;
   menuOpen = true;
   menu.hidden = false;
   menuInfo = null;

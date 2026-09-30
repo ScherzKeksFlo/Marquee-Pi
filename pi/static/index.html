@@ -15,7 +15,7 @@
 
     html, body, #stage { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #050505; cursor: none; }
     #stage { display: flex; align-items: center; justify-content: center; touch-action: none; user-select: none; }
-    #stage img, #stage video { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+    #stage img, #stage video { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: var(--fit, contain); pointer-events: none; }
     #name { position: absolute; inset: auto 1rem 1rem; color: white; text-align: center; font: 700 1.5rem "Chakra Petch", sans-serif; text-shadow: 0 2px 8px black; pointer-events: none; }
 
     /* Touch menu in the look of the Windows app (arcade theme, dark). */
@@ -58,6 +58,27 @@
     #menu .dot.ok { background: var(--grn); box-shadow: 0 0 8px var(--grn); }
     #menu .dot.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
     #menu .confirm { flex: 3; text-align: center; }
+
+    /* Portrait displays: the five views wrap instead of overflowing. */
+    @media (orientation: portrait) {
+      #menu .views { flex-wrap: wrap; }
+      #menu .views button { flex: 1 1 28%; }
+    }
+    /* Flat displays (under 400 CSS px high): a denser menu. */
+    body.compact #menu { font-size: 16px; }
+    body.compact #menu .head { padding: 4px 8px 4px 12px; }
+    body.compact #menu .head .title { font-size: 16px; }
+    body.compact #menu .body { padding: 0 12px 8px; }
+    body.compact #menu .section { margin: 4px 0 2px; }
+    body.compact #menu button { min-height: 40px; font-size: 15px; }
+    body.compact #menu .row.big button { min-height: 64px; font-size: 18px; }
+    body.compact #menu .status { padding: 6px 10px; gap: 2px 14px; font-size: 14px; }
+    body.compact #menu .status span:nth-child(even) { font-size: 12px; }
+
+    /* Picture shown while marquee-pi-configure-display waits for the user to confirm a profile. */
+    #pattern { position: absolute; inset: 0; box-sizing: border-box; border: 6px solid #ff3fd8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: #0d0a1a; color: #efeaff; font: 600 22px "Chakra Petch", sans-serif; text-align: center; }
+    #pattern .arrow { width: 0; height: 0; border-left: 28px solid transparent; border-right: 28px solid transparent; border-bottom: 48px solid #2ef2ff; }
+    #pattern .info { font: 400 20px "IBM Plex Mono", monospace; color: #b3a7d3; }
   </style>
 </head>
 <body>
