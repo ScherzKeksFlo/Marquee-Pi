@@ -15,6 +15,8 @@ Follows `1.0.0-beta.1`. It is tested on the same single setup (Raspberry Pi 3 B+
 
 ### Changes
 
+- The Pi decodes uploaded images completely (Pillow, new dependency `python3-pil`) before activating them; a file with only a valid header or a truncated image is refused and the previous media stays.
+- The Windows tool sends the running game again when the Pi dropped it while the PC slept, and no longer loses a settings change made during the gesture upload. The touch display shows the new state after an API restart even when the state version matches.
 - Saving keeps the settings window open and confirms with a message.
 - After the Pi was unreachable, the next status poll happens at once instead of after up to five seconds; the Windows tool no longer sends the running game twice when it first sees a Pi, and resends it when settings change during the send.
 - The Windows tool's Pi traffic now lives in `PiSync` with a scripted fake Pi in the tests.
