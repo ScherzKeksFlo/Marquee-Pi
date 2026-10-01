@@ -31,7 +31,7 @@ PACKAGE = "marquee-pi"
 MAINTAINER = "Keks <flo@scherz-keks.de>"
 HOMEPAGE = "https://github.com/ScherzKeksFlo/Marquee-Pi"
 DEPENDS = [
-    "python3", "ffmpeg", "fbi", "curl", "chromium | chromium-browser", "xserver-xorg",
+    "python3", "python3-pil", "ffmpeg", "fbi", "curl", "chromium | chromium-browser", "xserver-xorg",
     "xserver-xorg-input-libinput", "xinit", "x11-xserver-utils", "xauth",
     "polkitd | policykit-1", "openssl", "adduser", "hostname", "systemd", "xinput",
 ]

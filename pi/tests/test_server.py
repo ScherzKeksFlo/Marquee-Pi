@@ -100,6 +100,56 @@ class StateTests(unittest.TestCase):
             self.assertFalse((Path(directory) / name).exists())
             self.assertEqual(DisplayState(Path(directory), 60).active_file.name, replacement)
 
+    def test_damaged_images_are_refused_and_keep_previous_media(self):
+        truncated = PNG[:len(PNG) // 2]
+        signature_only = PNG[:8]
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            state = DisplayState(data_dir, 60)
+            default = state.save_default(PNG, ".png")
+            shutdown = state.save_shutdown(PNG, ".png")
+            state.save_boot_splash(PNG, ".png")
+            splash = (data_dir / "boot-splash").read_bytes()
+            for broken in (signature_only, truncated):
+                with self.assertRaises(ValueError):
+                    state.save_default(broken, ".png")
+                with self.assertRaises(ValueError):
+                    state.save_shutdown(broken, ".png")
+                with self.assertRaises(ValueError):
+                    state.save_boot_splash(broken, ".png")
+            for extension, header in ((".jpg", b"\xff\xd8\xff\xe0"), (".gif", b"GIF89a"),
+                                      (".webp", b"RIFF\x04\x00\x00\x00WEBP")):
+                with self.assertRaises(ValueError):
+                    state.save_default(header + b"\x00" * 16, extension)
+            self.assertEqual(state.active_file.name, default)
+            self.assertEqual(state.shutdown_file.name, shutdown)
+            self.assertEqual((data_dir / "boot-splash").read_bytes(), splash)
+            restored = DisplayState(data_dir, 60)
+            self.assertEqual(restored.active_file.name, default)
+            self.assertEqual(restored.shutdown_file.name, shutdown)
+
+    def test_valid_images_of_every_format_including_animation_are_accepted(self):
+        from io import BytesIO
+        from PIL import Image
+        frames = [Image.new("RGB", (4, 4), color) for color in ("red", "blue")]
+        samples = {}
+        for extension, fmt in ((".png", "PNG"), (".jpg", "JPEG"), (".gif", "GIF"), (".webp", "WEBP")):
+            buffer = BytesIO()
+            frames[0].save(buffer, fmt)
+            samples[extension] = buffer.getvalue()
+        for extension, fmt in ((".gif", "GIF"), (".webp", "WEBP")):
+            buffer = BytesIO()
+            frames[0].save(buffer, fmt, save_all=True, append_images=frames[1:], duration=100, loop=0)
+            samples["animated" + extension] = buffer.getvalue()
+        with tempfile.TemporaryDirectory() as directory:
+            state = DisplayState(Path(directory), 60)
+            for key, data in samples.items():
+                name = state.save_default(data, "." + key.rsplit(".", 1)[1])
+                self.assertEqual((Path(directory) / name).read_bytes(), data, key)
+            animated = samples["animated.gif"]
+            with self.assertRaises(ValueError):  # truncated inside the second frame
+                state.save_default(animated[:-20], ".gif")
+
     def test_gesture_configuration_and_retroarch_event(self):
         with tempfile.TemporaryDirectory() as directory:
             state = DisplayState(Path(directory), 60)

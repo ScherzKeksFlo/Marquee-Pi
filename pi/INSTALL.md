@@ -15,11 +15,12 @@ After the first boot, log in via SSH and update:
 ```sh
 sudo apt update
 sudo apt full-upgrade -y
-sudo apt install -y python3 ffmpeg fbi curl chromium xserver-xorg xserver-xorg-input-libinput xinit x11-xserver-utils xauth xinput polkitd openssl
+sudo apt install -y python3 python3-pil ffmpeg fbi curl chromium xserver-xorg xserver-xorg-input-libinput xinit x11-xserver-utils xauth xinput polkitd openssl
 sudo apt clean
 ```
 
 - `python3`: local API server without additional Python packages.
+- `python3-pil` (Pillow): decodes uploaded PNG, JPEG, GIF and WebP files completely before they are activated, so a damaged image is refused.
 - `ffmpeg`: `ffprobe` checks uploaded MP4 files for H.264.
 - `fbi`: shows the static boot splash in the Linux framebuffer before X11 is ready.
 - `curl`: activates the stored shutdown media in the local kiosk on a direct Pi shutdown.

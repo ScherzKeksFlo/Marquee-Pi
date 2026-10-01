@@ -8,6 +8,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import io
 import json
 import math
 import os
@@ -56,6 +57,10 @@ STATIC_FONTS = frozenset({
     "IBMPlexMono-Regular.ttf", "IBMPlexMono-Medium.ttf",
 })
 MEDIA_CACHE = "public, max-age=31536000, immutable"
+# What the decoder must report for each image extension, and how large a picture it may unpack
+# (a Pi 3 has 1 GB of RAM; 40 megapixels as RGBA are 160 MB).
+IMAGE_FORMATS = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".gif": "GIF", ".webp": "WEBP"}
+MAX_IMAGE_PIXELS = 40_000_000
 
 
 def validate_media(data: bytes, extension: str) -> str:
@@ -73,7 +78,30 @@ def validate_media(data: bytes, extension: str) -> str:
     }
     if not signatures[extension]:
         raise ValueError("File contents do not match extension")
+    if extension in IMAGE_FORMATS:
+        verify_image(data, IMAGE_FORMATS[extension])
     return SUPPORTED[extension]
+
+
+def verify_image(data: bytes, expected_format: str) -> None:
+    """Decode every frame, so a file with only a valid header is not accepted."""
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise ValueError("Pillow (python3-pil) is required for image uploads") from exc
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format != expected_format:
+                raise ValueError("File contents do not match extension")
+            if image.width * image.height > MAX_IMAGE_PIXELS:
+                raise ValueError("Image is too large")
+            for index in range(getattr(image, "n_frames", 1)):
+                image.seek(index)
+                image.load()
+    except ValueError:
+        raise
+    except Exception as exc:  # decoders raise OSError, EOFError, IndexError, SyntaxError, ...
+        raise ValueError("Image file is damaged or cannot be decoded") from exc
 
 
 def verify_mp4(path: Path) -> float | None:

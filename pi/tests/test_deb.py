@@ -70,7 +70,7 @@ class DebPackageTests(unittest.TestCase):
             self.assertIn(field, self.fields)
         self.assertEqual(self.fields["Package"], "marquee-pi")
         self.assertEqual(self.fields["Architecture"], "all")
-        for dependency in ("python3", "ffmpeg", "fbi", "curl", "chromium | chromium-browser", "xserver-xorg",
+        for dependency in ("python3", "python3-pil", "ffmpeg", "fbi", "curl", "chromium | chromium-browser", "xserver-xorg",
                            "xinit", "x11-xserver-utils", "xauth", "polkitd | policykit-1", "openssl",
                            "adduser", "hostname", "systemd"):
             self.assertIn(dependency, self.fields["Depends"])

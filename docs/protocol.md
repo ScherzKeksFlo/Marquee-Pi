@@ -32,7 +32,7 @@ The maximum HTTP request size is 32 MiB. The Windows sender reserves 1 MiB of th
 
 The touch menu uses these endpoints, which like all `/ui/` paths are reachable only from `127.0.0.1` or `::1` and need no token: `GET /ui/system` (addresses, connection of the Windows app, brightness, whether power commands are enabled), `POST /ui/brightness` with `{"percent": n}` (clamped to 5–100) and `POST /ui/power` with `{"action": "reboot"}` or `{"action": "poweroff"}`. Power requests are checked with polkit exactly like `/v1/reboot` and `/v1/shutdown`.
 
-`POST /v1/default-media` uses the raw bytes of the file. `X-File-Name` provides the extension. The API checks the type and size limit (currently 20 MiB); for MP4, `ffprobe` must confirm an H.264 video stream. The file is activated permanently only after complete verification. A failed upload leaves the previous media active.
+`POST /v1/default-media` uses the raw bytes of the file. `X-File-Name` provides the extension. The API checks the type and size limit (currently 20 MiB); images (PNG, JPEG, GIF, WebP, all frames of animations) must decode completely with Pillow, up to 40 megapixels; for MP4, `ffprobe` must confirm an H.264 video stream. The file is activated permanently only after complete verification. A failed upload leaves the previous media active.
 
 `POST /v1/boot-splash` uses the same raw data format but accepts only PNG or JPEG. `POST /v1/shutdown-media` accepts the supported image and animation formats as well as H.264 MP4. On shutdown, the local display switches to this media first. For a video, the Pi waits for its detected duration plus a short margin, capped at 30 seconds, before running `systemctl poweroff`.
 
