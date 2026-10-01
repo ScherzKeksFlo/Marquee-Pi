@@ -123,8 +123,9 @@ async function poll() {
     if (!response.ok) throw new Error("State unavailable");
     const state = await response.json();
     reportSize();
-    // The test picture appears without a new state version, so it is part of the change key.
-    const key = state.version + ":" + (state.display?.test_pattern ? "t" : "");
+    // The test picture appears without a new state version, so it is part of the change key. The
+    // version restarts at 1 with every server process, so the instance belongs to the key as well.
+    const key = (state.instance_id ?? "") + ":" + state.version + ":" + (state.display?.test_pattern ? "t" : "");
     if (key !== lastVersion) {
       currentState = state;
       lastVersion = key;
