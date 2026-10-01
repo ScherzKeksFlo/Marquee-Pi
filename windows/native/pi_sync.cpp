@@ -82,6 +82,13 @@ void PiSync::tick() {
             {
                 std::lock_guard<std::mutex> guard(mutex);
                 shown = display;
+                // The Pi drops its game when no heartbeat arrives for a while (the PC slept) but
+                // keeps its instance id. A game we delivered and still hold has to be sent again;
+                // a game the Pi never accepted, or one that has ended since, must not be.
+                if (game && gameVersion == version && deliveredVersion == version &&
+                    status.get("game_title").value("").empty()) {
+                    needsSync = true; sync = true;
+                }
             }
             if (events.display) events.display(display);
             if (events.status && (statusCycle || recovered))
@@ -108,8 +115,7 @@ void PiSync::tick() {
                     if (error.status != 404) throw;
                 }
                 std::lock_guard<std::mutex> guard(mutex);
-                if (configVersion == 0 || (current.gestures == copy.gestures &&
-                                           current.language == copy.language)) gestureDirty = false;
+                if (configVersion == configAtStart) gestureDirty = false;
             }
             if (reset) {
                 transport.request(copy, L"POST", L"/v1/default");
@@ -129,6 +135,7 @@ void PiSync::tick() {
                     for (const auto& warning : gameWarnings(response.body))
                         if (events.piWarning) events.piWarning(warning);
                     std::lock_guard<std::mutex> guard(mutex);
+                    if (gameVersion == version) deliveredVersion = version;
                     if (gameVersion == version && configVersion == configAtStart) needsSync = false;
                 } catch (const HttpError& error) {
                     if (error.status >= 400 && error.status < 500) {

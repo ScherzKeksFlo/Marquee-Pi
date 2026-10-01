@@ -142,17 +142,22 @@ struct FakePi : PiTransport {
     std::function<HttpResult(const Call&)> handler;  // may throw HttpError or runtime_error
     std::string instance = "a";
     std::string events = "[]";
-    std::string statusBody = R"({"game_title":""})";
+    std::string statusBody;           // empty: report the game the Pi was last sent
+    bool hasGame = false;             // the Pi holds a game; a test clears it to simulate the timeout
 
     HttpResult request(const Settings&, const std::wstring& method, const std::wstring& path,
                        const std::string& body, const std::wstring&, int) override {
         Call call{method, path, body};
         calls.push_back(call);
+        if (path == L"/v1/game") hasGame = true;
+        if (path == L"/v1/default") hasGame = false;
         if (handler) {
             HttpResult custom = handler(call);
             if (custom.status) return custom;
         }
-        if (path == L"/v1/status") return {200, statusBody};
+        if (path == L"/v1/status")
+            return {200, !statusBody.empty() ? statusBody
+                                             : std::string(hasGame ? R"({"game_title":"Game"})" : R"({"game_title":""})")};
         if (path.rfind(L"/v1/gesture-events", 0) == 0)
             return {200, "{\"instance_id\":\"" + instance + "\",\"events\":" + events + "}"};
         return {200, "{}"};
@@ -302,6 +307,71 @@ void piSyncTests() {
         PiSync sync(piSettings(), pi);
         ticks(sync, 3);
         assert(pi.count(L"/v1/gesture-config") == 3);  // never cleared, pushed every tick
+    }
+    // A Pi that forgot the game (PC asleep past the timeout) but kept its instance gets it again.
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame());
+        ticks(sync, 20);
+        assert(pi.count(L"/v1/game") == 1);
+        pi.hasGame = false;
+        ticks(sync, 7);  // next status cycle notices
+        assert(pi.count(L"/v1/game") == 2 && pi.hasGame);
+        ticks(sync, 30);
+        assert(pi.count(L"/v1/game") == 2);
+    }
+    // ... but not without a local game, after showing the default on purpose, or for a game the Pi rejected.
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame());
+        ticks(sync, 2);
+        sync.showDefault();
+        pi.hasGame = false;
+        ticks(sync, 30);
+        assert(pi.count(L"/v1/game") == 1);
+    }
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        ticks(sync, 30);
+        assert(pi.count(L"/v1/game") == 0);
+    }
+    // A game started while the status poll ran is not overwritten by the stale one.
+    {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        sync.gameStarted(piGame(L"First"));
+        ticks(sync, 1);
+        pi.hasGame = false;
+        pi.handler = [&](const FakePi::Call& c) -> HttpResult {
+            if (c.path == L"/v1/status") sync.gameExited();  // the game ends while we poll
+            return {};
+        };
+        ticks(sync, 7);
+        assert(pi.count(L"/v1/game") == 1 && !sync.inGame());
+    }
+    // A settings change during the gesture or language upload stays pending and goes out afterwards.
+    for (const wchar_t* during : {L"/v1/gesture-config", L"/v1/language"}) {
+        FakePi pi;
+        PiSync sync(piSettings(), pi);
+        bool changed = false;
+        std::wstring tokenSeen;
+        pi.handler = [&](const FakePi::Call& c) -> HttpResult {
+            if (c.path == during && !changed) {
+                changed = true;
+                Settings next = piSettings(); next.token = L"fedcba9876543210fedcba9876543210";
+                sync.settingsChanged(next);
+            }
+            return {};
+        };
+        ticks(sync, 1);
+        assert(changed && pi.count(L"/v1/gesture-config") == 1);
+        ticks(sync, 1);
+        assert(pi.count(L"/v1/gesture-config") == 2 && pi.count(L"/v1/language") == 2);
+        ticks(sync, 5);
+        assert(pi.count(L"/v1/gesture-config") == 2);  // once current, quiet again
     }
     // Heartbeat: every third status cycle (14, 28, ...) while a game is active, never without one.
     {

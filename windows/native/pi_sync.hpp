@@ -95,6 +95,7 @@ private:
     std::string instance;
     int64_t cursor = 0;
     bool cursorReady = false;
+    uint64_t deliveredVersion = 0;  // gameVersion of the game the Pi last accepted (guarded by mutex)
     int cycle = 0, heartbeat = 0;
     bool online = false;
     bool statusDown = false;  // the last status poll failed: poll every tick until it works
